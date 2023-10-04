@@ -1,0 +1,20 @@
+name = "ReloadableMiddleware"
+uuid = "6b39ad65-d4e1-4a6a-9d75-56e3fde28494"
+authors = ["Michael Hatherly <michaelhatherly@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+BundledWebResources = "56c11eb9-1257-4f49-abe4-0ac93e2bfd0a"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+MIMEs = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+
+[weakdeps]
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+
+[extensions]
+ReloadableMiddlewareReviseExt = "Revise"
+
+[compat]
+HTTP = "1"
+julia = "1.6"
