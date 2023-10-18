@@ -134,7 +134,7 @@ function ReloadableMiddleware._hot_reloader_middleware(
         end
     end
 
-    return (; middleware, refresh)
+    return (; server, middleware, refresh)
 end
 
 # Injects the hot reloading script into the HTML response. Uses idiomorph to
