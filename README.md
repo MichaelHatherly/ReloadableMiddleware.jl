@@ -2,7 +2,7 @@
 
 _`Revise`-compatible hot-reloading middleware for web development in Julia_
 
-Development utilities for improving your development workflow when building web
+Development utilities for improving your workflow when building web
 applications in pure-Julia. This package integrates with `Revise` and `HTTP` to
 allow for automatic hot-reloading pages with "in-place" DOM-swapping rather
 than full-page refreshes.
