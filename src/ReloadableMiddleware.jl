@@ -5,6 +5,7 @@ module ReloadableMiddleware
 import Dates
 import HTTP
 import MIMEs
+import MacroTools
 import URIs
 
 # Exports.
@@ -13,31 +14,51 @@ export @req, ModuleRouter, ServerStateProvider, HotReloader, server_state
 
 # Module router.
 
-struct Opt{T} end
+struct Optional end
 
-struct Req{Method,Path,Params,Query,Form}
+struct Req{Method,Path,Params,Query,QueryDefaults,Form,FormDefaults}
     request::HTTP.Request
     params::Params
     query::Query
     form::Form
 end
 
-function _Req(
+const QUERY_DEFAULTS = () -> (;)
+const FORM_DEFAULTS = () -> (;)
+
+function ReqTypeBuilder(
     method::String,
     path::String;
     params = @NamedTuple{},
     query = @NamedTuple{},
-    form = @NamedTuple{}
+    query_defaults = QUERY_DEFAULTS,
+    form = @NamedTuple{},
+    form_defaults = FORM_DEFAULTS,
 )
     method in ("*", "GET", "POST", "PUT", "DELETE", "PATCH") || error("invalid HTTP method")
-    return Req{Symbol(method),Symbol(path),params,query,form}
+    return Req{
+        Symbol(method),
+        Symbol(path),
+        params,
+        query,
+        typeof(query_defaults),
+        form,
+        typeof(form_defaults),
+    }
 end
 
 macro req(method, path, kws...)
     method = String(method)
     path, params = _parse_path(path)
-    kws = [Expr(:kw, arg.args[1], :(@NamedTuple{$(arg.args[2].args...)})) for arg in kws]
-    return esc(:($(ReloadableMiddleware)._Req($(method), $(path); $(params), $(kws...))))
+    keywords = []
+    for kw in kws
+        type, defaults = _parse_curly(kw)
+        isnothing(type) || push!(keywords, type)
+        isnothing(defaults) || push!(keywords, defaults)
+    end
+    return esc(
+        :($(ReloadableMiddleware).ReqTypeBuilder($(method), $(path); $(params), $(keywords...))),
+    )
 end
 
 function _parse_path(p::Expr)
@@ -46,10 +67,13 @@ function _parse_path(p::Expr)
         parts = map(p.args) do arg
             if isa(arg, String)
                 arg
+            elseif isa(arg, Symbol)
+                push!(params, Expr(:(::), arg, :String))
+                "{$(arg)}"
             else
-                if Meta.isexpr(arg, :(::))
+                if MacroTools.@capture(arg, key_::type_)
                     push!(params, arg)
-                    "{$(arg.args[1])}"
+                    "{$(key)}"
                 else
                     error("invalid path expression")
                 end
@@ -63,17 +87,60 @@ function _parse_path(p::Expr)
 end
 _parse_path(p::String) = p, Expr(:kw, :params, :(@NamedTuple{}))
 
+function _parse_curly(ex::Expr)
+    if MacroTools.@capture(ex, keyword_ = {args__})
+        defaults = []
+        fields = []
+        for arg in args
+            if MacroTools.@capture(arg, key_ = default_)
+                if MacroTools.@capture(key, key_inner_::type_)
+                    push!(defaults, Expr(:kw, key_inner, :(() -> $(default))))
+                    push!(fields, Expr(:(::), key_inner, type))
+                else
+                    if isa(key, Symbol)
+                        push!(defaults, Expr(:kw, key, :(() -> $(default))))
+                        push!(fields, Expr(:(::), key, :String))
+                    else
+                        error("invalid curly expression")
+                    end
+                end
+            else
+                if MacroTools.@capture(arg, key_::type_)
+                    push!(fields, Expr(:(::), key, type))
+                else
+                    if MacroTools.@capture(arg, key_)
+                        push!(fields, Expr(:(::), key, :String))
+                    else
+                        error("invalid curly expression")
+                    end
+                end
+            end
+        end
+        defaults =
+            isempty(defaults) ? nothing :
+            :($(Symbol(keyword, :_defaults)) = () -> (; $(defaults...)))
+        fields = isempty(fields) ? nothing : :($keyword = @NamedTuple{$(fields...)})
+        fields, defaults
+    else
+        error("invalid keyword expression")
+    end
+end
+
 struct ReqBuilder{R,F} <: Function
     handler::F
 end
 
-function (::ReqBuilder{Req{Method,Path,Params,Query,Form}})(
+ReqBuilder(R, f::F) where {F} = ReqBuilder{R,F}(f)
+
+function (rb::ReqBuilder{Req{Method,Path,Params,Query,QueryDefaults,Form,FormDefaults}})(
     req::HTTP.Request,
-) where {Method,Path,Params,Query,Form}
+) where {Method,Path,Params,Query,QueryDefaults,Form,FormDefaults}
     params = _build_params(Params, req)
-    query = _build_query(Query, req)
-    form = _build_form(Form, req)
-    return Req{Method,Path,Params,Query,Form}(req, params, query, form)
+    query = _build_query(Query, QueryDefaults.instance(), req)
+    form = _build_form(Form, FormDefaults.instance(), req)
+    return rb.handler(
+        Req{Method,Path,Params,Query,QueryDefaults,Form,FormDefaults}(req, params, query, form),
+    )
 end
 
 type_tuple_to_tuple(::Type{Tuple{}}) = ()
@@ -85,39 +152,54 @@ _parse(::Type{T}, value::String) where {T} = Base.parse(T, value)
 
 function _parse_kv_or_error(
     req::HTTP.Request,
+    defaults::NamedTuple,
     dict::Dict{String,String},
     key::Symbol,
     T::Type,
     keys,
 )
-    key = String(key)
-    if haskey(dict, key)
-        value = dict[key]
+    str_key = String(key)
+    if haskey(dict, str_key)
+        value = dict[str_key]
         return _parse(T, value)::T
     else
-        error("missing key '$key' in $(req)")
+        if hasproperty(defaults, key)
+            return getproperty(defaults, key)()::T
+        else
+            error("missing key '$key' in $(req)")
+        end
     end
 end
 
 function _build_params(::Type{NamedTuple{K,T}}, req::HTTP.Request)::NamedTuple{K,T} where {K,T}
-    return _build_nt(K, T, req, HTTP.getparams(req))
+    return _build_nt(K, T, req, (;), HTTP.getparams(req))
 end
 _build_params(::Type{@NamedTuple{}}, ::HTTP.Request) = (;)
 
-function _build_query(::Type{NamedTuple{K,T}}, req::HTTP.Request)::NamedTuple{K,T} where {K,T}
-    return _build_nt(K, T, req, URIs.queryparams(URIs.URI(req.target)))
+function _build_query(
+    ::Type{NamedTuple{K,T}},
+    defaults,
+    req::HTTP.Request,
+)::NamedTuple{K,T} where {K,T}
+    return _build_nt(K, T, req, defaults, URIs.queryparams(URIs.URI(req.target)))
 end
 _build_query(::Type{@NamedTuple{}}, ::HTTP.Request) = (;)
 
-function _build_form(::Type{NamedTuple{K,T}}, req::HTTP.Request)::NamedTuple{K,T} where {K,T}
+function _build_form(
+    ::Type{NamedTuple{K,T}},
+    defaults,
+    req::HTTP.Request,
+)::NamedTuple{K,T} where {K,T}
     # TODO: make this less hacky. Support JSON-encoded form data too.
-    return _build_nt(K, T, req, URIs.queryparams(URIs.URI("/?$(String(req.body))")))
+    return _build_nt(K, T, req, defaults, URIs.queryparams(URIs.URI("/?$(String(req.body))")))
 end
 _build_form(::Type{@NamedTuple{}}, ::HTTP.Request) = (;)
 
-function _build_nt(K, T, req, dict)
+function _build_nt(K, T, req, defaults, dict)
     ts = type_tuple_to_tuple(T)
-    return NamedTuple{K,T}((_parse_kv_or_error(req, dict, k, t, K) for (k, t) in zip(K, ts)))
+    return NamedTuple{K,T}((
+        _parse_kv_or_error(req, defaults, dict, k, t, K) for (k, t) in zip(K, ts)
+    ))
 end
 
 """
