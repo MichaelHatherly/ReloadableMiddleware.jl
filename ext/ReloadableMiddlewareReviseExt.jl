@@ -27,6 +27,8 @@ function _updated_mtimes(current::Dict, mods::Vector{Module})
     mtimes = Dict{String,Float64}()
     for mod in mods
         root, files = Revise.modulefiles(mod)
+        root = something(root, [])
+        files = something(files, [])
         for file in Set(vcat(root, files))
             mtimes[file] = mtime(file)
         end
