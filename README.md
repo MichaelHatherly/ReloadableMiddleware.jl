@@ -166,3 +166,43 @@ form data respectively. These fields are parsed as follows:
   above syntax. Or `x::T = default` for a typed default value. These values are
   created on-demand when the parameter is not present in the request and are not
   created until needed.
+
+`form` data by default assumes that the request body syntax is
+`application/x-www-form-urlencoded` and that that the `Content-Type` header is
+set to `application/x-www-form-urlencoded`. Parsing of this text is done using
+`URIs.parseparams(s::AbstractString)`.
+
+#### JSON form data
+
+JSON data parsing can be enabled by setting the `Content-Type` header to
+`application/json` in the request. This will cause the `form` fields to be
+parsed as JSON instead of as form data. The `{...}` syntax is still used, so
+each field in the `NamedTuple` to is parsed is a JSON-parsed value. `JSON3.jl`
+is used for the parsing, and as such we support using custom Julia types for
+the resulting values so long as suitable `StructType` definitions are provided.
+Please see the `JSON3.jl` documentation for more information on this topic.
+
+```julia
+struct CustomType
+    x::Int
+    y::Float64
+end
+
+function json_endpoint(req::@req POST "/json" form = {x::CustomType})
+    # `x` is parsed as a `CustomType` value.
+end
+```
+
+The HTTP request would then need to be sent as follows:
+
+```http
+POST /json HTTP/1.1
+Content-Type: application/json
+
+{
+    "x": {
+        "x": 1,
+        "y": 2.0
+    }
+}
+```
