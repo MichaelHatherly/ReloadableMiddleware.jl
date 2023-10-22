@@ -4,6 +4,7 @@ module ReloadableMiddleware
 
 import Dates
 import HTTP
+import JSON3
 import MIMEs
 import MacroTools
 import URIs
@@ -181,7 +182,9 @@ function _build_query(
     defaults,
     req::HTTP.Request,
 )::NamedTuple{K,T} where {K,T}
-    return _build_nt(K, T, req, defaults, URIs.queryparams(URIs.URI(req.target)))
+    uri = URIs.URI(req.target)
+    params = URIs.queryparams(uri)
+    return _build_nt(K, T, req, defaults, params)
 end
 _build_query(::Type{@NamedTuple{}}, ::HTTP.Request) = (;)
 
@@ -190,8 +193,12 @@ function _build_form(
     defaults,
     req::HTTP.Request,
 )::NamedTuple{K,T} where {K,T}
-    # TODO: make this less hacky. Support JSON-encoded form data too.
-    return _build_nt(K, T, req, defaults, URIs.queryparams(URIs.URI("/?$(String(req.body))")))
+    if _header_contains(req, "Content-Type" => "application/json")
+        return JSON3.read(req.body, NamedTuple{K,T}; allow_inf = true)
+    else
+        params = URIs.queryparams(String(req.body))
+        return _build_nt(K, T, req, defaults, params)
+    end
 end
 _build_form(::Type{@NamedTuple{}}, ::HTTP.Request) = (;)
 
@@ -200,6 +207,15 @@ function _build_nt(K, T, req, defaults, dict)
     return NamedTuple{K,T}((
         _parse_kv_or_error(req, defaults, dict, k, t, K) for (k, t) in zip(K, ts)
     ))
+end
+
+function _header_contains(req::HTTP.Request, (key, value)::Pair)
+    for (k, v) in req.headers
+        if k == key
+            return v == value
+        end
+    end
+    return false
 end
 
 """

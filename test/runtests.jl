@@ -8,6 +8,14 @@ module Endpoints
 
 using ReloadableMiddleware
 
+import ReloadableMiddleware.JSON3.StructTypes
+
+struct CustomJSONType
+    a::Int
+    b::String
+end
+StructTypes.StructType(::Type{CustomJSONType}) = StructTypes.Struct()
+
 f_1(req::@req GET "/") = req
 f_2(req::@req POST "/1/$id") = req
 f_3(req::@req PATCH "/2/$(id::Int)") = req
@@ -27,6 +35,11 @@ function h_3(
         "/h/2/$(id::Int)",
         form = {s = "default", t::Base.UUID = Base.UUID("123e4567-e89b-12d3-a456-426655440000")}
     ),
+)
+    return req
+end
+function h_4(
+    req::@req(POST, "/h/json", form = {a::Vector{Int}, b::Dict{String,Int}, c::CustomJSONType}),
 )
     return req
 end
@@ -226,6 +239,21 @@ end
         params = (; id = 123),
         query = (;),
         form = (; s = "default", t = Base.UUID("123e4567-e89b-12d3-a456-426655440000")),
+    )
+
+    test_wrapper(
+        req = HTTP.Request(
+            "POST",
+            "/h/json",
+            ["Content-Type" => "application/json"],
+            "{\"a\": [1, 2], \"b\": {\"c\": 3, \"d\": 4}, \"c\": {\"a\": 0, \"b\": \"\"}}",
+        ),
+        f = Endpoints.h_4,
+        method = "POST",
+        target = "/h/json",
+        params = (;),
+        query = (;),
+        form = (; a = [1, 2], b = Dict("c" => 3, "d" => 4), c = Endpoints.CustomJSONType(0, "")),
     )
 
     # Ensure that running JET on these kinds of endpoints shows up the
