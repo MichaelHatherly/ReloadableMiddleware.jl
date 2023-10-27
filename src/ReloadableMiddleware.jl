@@ -48,7 +48,18 @@ function ReqTypeBuilder(
     }
 end
 
+"""
+    @req method path [param={}] [query={}] [form={}]
+
+Define an HTTP route type that will unpack an `HTTP.Request` into a `Req` object
+that is fully typed and expected to contain the correct parameters, query
+parameters, and form parameters. See the README for detailed documentation.
+"""
 macro req(method, path, kws...)
+    return _req_macro(method, path, kws...)
+end
+
+function _req_macro(method, path, kws...)
     method = String(method)
     path, params = _parse_path(path)
     keywords = []
@@ -255,7 +266,7 @@ function _build_router(base::HTTP.Router, modules::Vector{Module})
                         _register_route!(
                             router,
                             object,
-                            Base.tuple_type_head(Base.tuple_type_tail(m.sig)),
+                            _tuple_type_head(Base.tuple_type_tail(m.sig)),
                         )
                     end
                 end
@@ -264,6 +275,9 @@ function _build_router(base::HTTP.Router, modules::Vector{Module})
     end
     return router
 end
+
+_tuple_type_head(::Type{Tuple{}}) = nothing
+_tuple_type_head(T::Type{<:Tuple}) = fieldtype(T, 1)
 
 function _register_route!(
     router::HTTP.Router,
