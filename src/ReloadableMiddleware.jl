@@ -159,13 +159,16 @@ type_tuple_to_tuple(::Type{Tuple{}}) = ()
 type_tuple_to_tuple(T::Type{<:Tuple}) =
     (Base.tuple_type_head(T), type_tuple_to_tuple(Base.tuple_type_tail(T))...)
 
+_parse(::Type{T}, vec::Vector{String}) where {T} = _parse(T, only(vec))
+_parse(::Type{Vector{T}}, vec::Vector{String}) where {T} = [_parse(T, each) for each in vec]
+
 _parse(::Type{String}, value::String) = value
 _parse(::Type{T}, value::String) where {T} = Base.parse(T, value)
 
 function _parse_kv_or_error(
     req::HTTP.Request,
     defaults::NamedTuple,
-    dict::Dict{String,String},
+    dict::Dict{String},
     key::Symbol,
     T::Type,
     keys,
@@ -194,7 +197,7 @@ function _build_query(
     req::HTTP.Request,
 )::NamedTuple{K,T} where {K,T}
     uri = URIs.URI(req.target)
-    params = URIs.queryparams(uri)
+    params = _queryparams(uri)
     return _build_nt(K, T, req, defaults, params)
 end
 _build_query(::Type{@NamedTuple{}}, ::HTTP.Request) = (;)
@@ -207,7 +210,7 @@ function _build_form(
     if _header_contains(req, "Content-Type" => "application/json")
         return JSON3.read(req.body, NamedTuple{K,T}; allow_inf = true)
     else
-        params = URIs.queryparams(String(req.body))
+        params = _queryparams(String(req.body))
         return _build_nt(K, T, req, defaults, params)
     end
 end
@@ -219,6 +222,16 @@ function _build_nt(K, T, req, defaults, dict)
         _parse_kv_or_error(req, defaults, dict, k, t, K) for (k, t) in zip(K, ts)
     ))
 end
+
+function _queryparams(pairs::Vector{Pair{String,String}})
+    dict = Dict{String,Vector{String}}()
+    for (key, value) in pairs
+        push!(get!(Vector{String}, dict, key), value)
+    end
+    return dict
+end
+_queryparams(s::String) = _queryparams(URIs.queryparampairs(s))
+_queryparams(uri::URIs.URI) = _queryparams(URIs.queryparampairs(uri))
 
 function _header_contains(req::HTTP.Request, (key, value)::Pair)
     for (k, v) in req.headers
