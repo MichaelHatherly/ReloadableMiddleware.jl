@@ -43,6 +43,24 @@ function h_4(
 )
     return req
 end
+function h_5(
+    req::@req(
+        POST,
+        "/h/5/$(id::Int)",
+        form = {ids::Vector{Int} = Int[], values::Vector{String}, target},
+    ),
+)
+    return req
+end
+function h_6(
+    req::@req(
+        GET,
+        "/h/6/$(id::Int)",
+        query = {ids::Vector{Int} = Int[], values::Vector{String}, target},
+    ),
+)
+    return req
+end
 
 broken_1(req::@req GET "/broken/1/$id") = req.params.unknown
 broken_2(req::@req GET "/broken/2/$id") = req.query.unknown
@@ -254,6 +272,31 @@ end
         params = (;),
         query = (;),
         form = (; a = [1, 2], b = Dict("c" => 3, "d" => 4), c = Endpoints.CustomJSONType(0, "")),
+    )
+
+    test_wrapper(
+        req = HTTP.Request(
+            "POST",
+            "/h/5/123",
+            ["Content-Type" => "application/x-www-form-urlencoded"],
+            "ids=1&ids=2&values=a&values=b&target=123",
+        ),
+        f = Endpoints.h_5,
+        method = "POST",
+        target = "/h/5/123",
+        params = (; id = 123),
+        query = (;),
+        form = (; ids = [1, 2], values = ["a", "b"], target = "123"),
+    )
+
+    test_wrapper(
+        req = HTTP.Request("GET", "/h/6/123?ids=1&values=a&values=b&target=123"),
+        f = Endpoints.h_6,
+        method = "GET",
+        target = "/h/6/123?ids=1&values=a&values=b&target=123",
+        params = (; id = 123),
+        query = (; ids = Int[1], values = String["a", "b"], target = "123"),
+        form = (;),
     )
 
     # Ensure that running JET on these kinds of endpoints shows up the

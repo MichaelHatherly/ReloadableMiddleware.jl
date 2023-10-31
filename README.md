@@ -160,6 +160,9 @@ form data respectively. These fields are parsed as follows:
 - `query = {x::T}` or `form = {x::T}` is parsed as a query parameter named `x`
   which is parsed as a value of type `T` where `T` is any type that can be
   parsed from a `String` via `Base.parse`, the same as for `params` above.
+  If the parameter needs to contain multiple values, e.g. `a=1&a=2` then `T` can
+  be a `Vector` of the type of the individual values in which case the value of
+  `a` will be `["1", "2"]` when `Vector{String}` is specified.
 - any number of fields can be specified in the `{...}` syntax, separated by
   commas.
 - default values can be specified by using `x = default` instead of `x` in the
