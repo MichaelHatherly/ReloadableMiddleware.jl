@@ -20,6 +20,7 @@ ReloadableMiddlewareReviseExt = "Revise"
 
 [compat]
 BundledWebResources = "1"
+Dates = "1.6"
 HTTP = "1"
 JSON3 = "1"
 MIMEs = "0.1"
