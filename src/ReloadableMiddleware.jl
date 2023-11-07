@@ -11,7 +11,12 @@ import URIs
 
 # Exports.
 
-export @req, ModuleRouter, ServerStateProvider, HotReloader, server_state
+export @req
+export HotReloader
+export ModuleRouter
+export RouteTable
+export ServerStateProvider
+export server_state
 
 # Module router.
 
@@ -269,7 +274,10 @@ _handle_router_call(mr, req) = _router_call(mr, req)
 _router_call(mr::ModuleRouter, req::HTTP.Request) = mr.router(req)
 
 function _build_router(base::HTTP.Router, modules::Vector{Module})
-    router = HTTP.Router(base)
+    return _build_router_impl!(HTTP.Router(base), modules)
+end
+
+function _build_router_impl!(router, modules::Vector{Module})
     for mod in modules
         for name in names(mod; all = true)
             if isdefined(mod, name) && !Base.isdeprecated(mod, name)
@@ -279,6 +287,7 @@ function _build_router(base::HTTP.Router, modules::Vector{Module})
                         _register_route!(
                             router,
                             object,
+                            mod,
                             _tuple_type_head(Base.tuple_type_tail(m.sig)),
                         )
                     end
@@ -295,12 +304,82 @@ _tuple_type_head(T::Type{<:Tuple}) = fieldtype(T, 1)
 function _register_route!(
     router::HTTP.Router,
     handler::F,
+    mod::Module,
     REQ::Type{<:Req{Method,Path}},
 ) where {F<:Function,Method,Path}
     HTTP.register!(router, String(Method), String(Path), ReqBuilder{REQ,F}(handler))
     return nothing
 end
-_register_route!(::HTTP.Router, ::Function, other) = nothing
+_register_route!(::HTTP.Router, ::Function, mod::Module, other) = nothing
+
+struct RouteInfo
+    method::String
+    path::String
+    handler::Function
+    mod::Module
+    file::String
+    line::Int
+
+    function RouteInfo(method, path, handler, mod, sig)
+        m = only(methods(handler, Tuple{sig}))
+        return new(String(method), String(path), handler, mod, String(m.file), m.line)
+    end
+end
+
+"""
+    RouteTable(mod::Module)
+    RouteTable(mods::Vector{Module})
+
+Show a table of all routes that are registered in the provided module(s).
+
+Useful for debugging and introspection of the `ModuleRouter` middleware.
+"""
+struct RouteTable
+    routes::Vector{RouteInfo}
+
+    function RouteTable(mods::Union{Module,Vector{Module}})
+        return new(_build_router_impl!([], vcat(mods)))
+    end
+end
+
+function Base.show(io::IO, table::RouteTable)
+    method_width = 0
+    path_width = 0
+    module_width = 0
+    function_width = 0
+    for route in table.routes
+        method_width = max(method_width, length(route.method))
+        path_width = max(path_width, length(route.path))
+        module_width = max(module_width, length(string(route.mod)))
+        function_width = max(function_width, length(string(route.handler)))
+    end
+    sort!(table.routes, by = route -> (route.path, route.method))
+    for (nth, route) in enumerate(table.routes)
+        nth > 1 && println(io)
+        print(io, lpad(string(nth), ndigits(length(table.routes)));)
+        print(io, " ")
+        printstyled(io, rpad(route.method, method_width), bold = true, color = :blue)
+        print(io, " ")
+        printstyled(io, rpad(route.path, path_width), bold = true, color = :green)
+        print(io, " ")
+        print(io, lpad(string(route.mod), module_width))
+        print(io, ".")
+        printstyled(io, rpad(string(route.handler), function_width), bold = true, color = :magenta)
+        print(io, " ")
+        print(io, "$(route.file):$(route.line)")
+    end
+end
+
+function _register_route!(
+    routes::Vector,
+    handler::F,
+    mod::Module,
+    REQ::Type{<:Req{Method,Path}},
+) where {F<:Function,Method,Path}
+    push!(routes, RouteInfo(Method, Path, handler, mod, REQ))
+    return nothing
+end
+_register_route!(::Vector, ::Function, mod::Module, other) = nothing
 
 # Server state.
 

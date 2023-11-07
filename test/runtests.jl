@@ -310,4 +310,14 @@ end
     @test_throws ErrorException router(HTTP.Request("GET", "/broken/1/123"))
     @test_throws ErrorException router(HTTP.Request("GET", "/broken/2/123"))
     @test_throws ErrorException router(HTTP.Request("GET", "/broken/3/123"))
+
+    table = ReloadableMiddleware.RouteTable(Main.Endpoints)
+    text = sprint(show, table)
+    @test contains(text, "GET")
+    @test contains(text, "POST")
+    @test contains(text, "PATCH")
+    @test contains(text, "Endpoints")
+    @test contains(text, "f_1")
+    @test contains(text, "runtests.jl:19")
+
 end
