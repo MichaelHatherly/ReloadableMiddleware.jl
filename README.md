@@ -7,6 +7,25 @@ applications in pure-Julia. This package integrates with `Revise` and `HTTP` to
 allow for automatic hot-reloading pages with "in-place" DOM-swapping rather
 than full-page refreshes.
 
+## Project Scaffolding
+
+To scaffold a new web app project using this package and a collection of other
+useful packages you can run the following copy-paste code in the Julia REPL. It
+will launch an interactive prompt to ask you for some details about your project
+and then create all the starter files for you.
+
+```julia
+julia> import Pkg
+       Pkg.activate(; temp = true)
+       Pkg.add(["ReloadableMiddleware", "PkgTemplates"])
+       using ReloadableMiddleware
+       ReloadableMiddleware.Templates.create()
+
+```
+
+This will avoid polluting your global environment with packages and will create
+a new project in the current directory.
+
 ## `HotReloader`
 
 A `HotReloader` can be added to the top of a `HTTP` router stack to enable

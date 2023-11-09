@@ -7,6 +7,7 @@ import HTTP
 import JSON3
 import MIMEs
 import MacroTools
+import PackageExtensionCompat
 import URIs
 
 # Exports.
@@ -17,6 +18,25 @@ export ModuleRouter
 export RouteTable
 export ServerStateProvider
 export server_state
+
+# Template `create`r.
+
+module Templates
+
+struct CreateTemplateDispatchType end
+
+"""
+    ReloadableMiddleware.Templates.create(; dir, interactive)
+
+Create a new webapp skeleton using an opioniated package selection.
+This function is only available when `PkgTemplates` is also loaded.
+"""
+create(; kws...) = _create(CreateTemplateDispatchType(); kws...)
+
+_create(::Any; kws...) =
+    error("`PkgTemplates` is not loaded. Please load it first before using this function.")
+
+end
 
 # Module router.
 
@@ -479,6 +499,10 @@ function _hot_reloader_middleware(::Any)
         end
     end
     return (; server = nothing, middleware, refresh)
+end
+
+function __init__()
+    PackageExtensionCompat.@require_extensions
 end
 
 end # module ReloadableMiddleware
