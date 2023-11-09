@@ -320,4 +320,35 @@ end
     @test contains(text, "f_1")
     @test contains(text, "runtests.jl:19")
 
+    @testset "Templates" begin
+        using PkgTemplates
+
+        mktempdir() do dir
+            cd(dir) do
+                ReloadableMiddleware.Templates.create(;
+                    interactive = false,
+                    pkg = "App",
+                    user = "fakeuser",
+                    git = false,
+                )
+
+                @test isdir("App")
+
+                @test isfile(joinpath("App", "Project.toml"))
+                @test isfile(joinpath("App", "Manifest.toml"))
+
+                @test isfile(joinpath("App", "src", "App.jl"))
+                @test isfile(joinpath("App", "src", "Templates", "Templates.jl"))
+                @test isfile(joinpath("App", "src", "Routes", "Routes.jl"))
+                @test isfile(joinpath("App", "src", "Resources", "Resources.jl"))
+                @test isfile(joinpath("App", "src", "Server", "Server.jl"))
+
+                @test isfile(joinpath("App", "test", "runtests.jl"))
+                @test isfile(joinpath("App", "README.md"))
+
+                cmd = Base.julia_cmd()
+                run(`$cmd --project=App -e 'using App'`)
+            end
+        end
+    end
 end
