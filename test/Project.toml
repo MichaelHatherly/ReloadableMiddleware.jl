@@ -1,4 +1,5 @@
 [deps]
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 PkgTemplates = "14b8a8f1-9102-5b29-a752-f990bacb7fe1"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

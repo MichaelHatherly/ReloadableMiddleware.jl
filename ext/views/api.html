@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><julia value="props.title" /></title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>"
+    />
+    <link rel="stylesheet" .href="props.style_css" />
+    <script src="https://unpkg.com/htmx.org@1.9.9"></script>
+  </head>
+  <body
+    hx-boost="true"
+    class="flex min-h-full bg-zinc-800 text-white/95 antialiased"
+  >
+    <div class="w-full">
+      <div class="ml-96 h-full">
+        <header class="fixed inset-0 flex">
+          <div
+            class="block w-96 overflow-y-auto border-r border-white/10 px-6 pb-8 pt-4"
+          >
+            <div class="border-b border-white/10 pb-2">
+              <a
+                class="text-xs font-bold text-white/60 transition-all duration-300 hover:text-white/40"
+                .href="props.api"
+                >OVERVIEW</a
+              >
+            </div>
+            <ul class="py-1">
+              <for iter="props.endpoints" item>
+                <li
+                  class="flex justify-between space-x-2 space-y-1 px-1 align-middle font-mono text-white/60"
+                >
+                  <span class="truncate">
+                    <a
+                      class="text-xs font-semibold text-teal-500 transition-all duration-300 hover:text-teal-500/70"
+                      .href="item.url"
+                      .title="item.name"
+                      ><julia value="item.name"
+                    /></a>
+                  </span>
+                  <span
+                    .class='item.current ? "text-xs font-bold text-blue-700" : "text-xs font-bold"'
+                    ><julia value="item.method"
+                  /></span>
+                </li>
+              </for>
+            </ul>
+            <show when="isempty(props.endpoints)">
+              <div
+                class="space-x-2 py-2 font-mono text-xs font-bold italic text-white/60"
+              >
+                No endpoints defined.
+              </div>
+            </show>
+          </div>
+        </header>
+        <div class="relative flex h-full flex-col px-8 pt-8">
+          <main class="flex-auto">
+            <show when="!isnothing(props.metadata)">
+              <div class="mx-auto flex max-w-5xl justify-between space-x-2">
+                <div class="flex-1 py-2">
+                  <div class="flex space-x-4 pb-2 font-mono text-sm font-bold">
+                    <button
+                      $hx-post="$(props.api)/open-file/$(props.metadata.file)/$(props.metadata.line)"
+                      hx-swap="none"
+                      title="Open in editor"
+                      class="rounded bg-blue-700/70 px-1 font-bold uppercase transition-colors duration-300 hover:bg-blue-500"
+                    >
+                      source
+                    </button>
+                    <code class="text-blue-700">
+                      <julia value="props.metadata.method" />
+                    </code>
+                    <code class="text-teal-500">
+                      <julia value="props.metadata.path" />
+                    </code>
+                  </div>
+                  <tabulate-data title="param" .rows="props.metadata.param" />
+                  <tabulate-data title="query" .rows="props.metadata.query" />
+                  <tabulate-data title="form" .rows="props.metadata.form" />
+                </div>
+              </div>
+            </show>
+            <article class="mx-auto flex h-full max-w-5xl flex-col pb-4 pt-4">
+              <div
+                class="prose prose-invert flex-auto border-t border-white/10 pt-4"
+              >
+                <match value="(props.metadata, props.content)">
+                  <case when="::Nothing, ::Nothing">
+                    <h1>📚 API Explorer</h1>
+                    <p>
+                      <em
+                        >👋 Welcome, this is the API explorer for your Julia web
+                        app. Happy exploring!</em
+                      >
+                    </p>
+                    <p>
+                      You can browse all the endpoints that are defined in your
+                      web app and see the documentation for each one along with
+                      any URL parameters, form data, or query parameters and
+                      their required Julia types.
+                    </p>
+                    <p>
+                      Click on any of the endpoints to see the documentation for
+                      that endpoint along with the definitions of there URL
+                      parameters, form data, and query parameters if they define
+                      any.
+                    </p>
+                    <p>
+                      To add new documentation to any of the endpoints all you
+                      have to do is define a Julia docstring above the function
+                      that defines the endpoint.
+                    </p>
+                  </case>
+                  <case when="::Any, ::Nothing">
+                    <p><em>No documentation defined for this endpoint.</em></p>
+                    <p>
+                      You can add documentation to this endpoint by adding a
+                      docstring above the function that defines the endpoint.
+                      Click on the blue <code>Source</code> button above to be
+                      taken directly to the definition of this endpoint in your
+                      default editor.
+                    </p>
+                  </case>
+                  <case when="_">
+                    <julia value="props.content" />
+                  </case>
+                </match>
+              </div>
+            </article>
+          </main>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

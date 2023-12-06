@@ -1,6 +1,7 @@
 using JET
 using ReloadableMiddleware
 using Test
+using Revise
 
 import ReloadableMiddleware.HTTP
 
@@ -318,7 +319,23 @@ end
     @test contains(text, "PATCH")
     @test contains(text, "Endpoints")
     @test contains(text, "f_1")
-    @test contains(text, "runtests.jl:19")
+    @test contains(text, "runtests.jl:20")
+
+    @testset "api route" begin
+        res = router(HTTP.Request("GET", "/api"))
+        body = String(res.body)
+        @test contains(body, "API Explorer")
+        @test contains(body, "OVERVIEW")
+        @test contains(body, "Happy exploring!")
+        @test contains(body, "/h/5/{id}")
+
+        res = router(HTTP.Request("GET", "/api/$(HTTP.URIs.escapeuri("/h/5/{id}"))/POST"))
+        body = String(res.body)
+        @test !contains(body, "API Explorer")
+        @test contains(body, "OVERVIEW")
+        @test contains(body, "No documentation defined")
+        @test contains(body, "Vector{String}")
+    end
 
     @testset "Templates" begin
         using PkgTemplates

@@ -1,8 +1,11 @@
 module ReloadableMiddlewareReviseExt
 
+import Base.Docs
 import BundledWebResources
 import HTTP
+import InteractiveUtils
 import ReloadableMiddleware
+import RelocatableFolders
 import Revise
 
 # Module router reloading.
@@ -18,7 +21,7 @@ function ReloadableMiddleware._handle_router_call(
         merge!(mr.mtimes, mtimes)
 
         @debug "rebuilding router"
-        mr.router = Base.invokelatest(ReloadableMiddleware._build_router, mr.base, mr.mods)
+        mr.router = Base.invokelatest(ReloadableMiddleware._build_router, mr.base, mr.mods, mr.api)
     end
     return Base.invokelatest(ReloadableMiddleware._router_call, mr, req)
 end
@@ -41,6 +44,108 @@ function _updated_mtimes(current::Dict, mods::Vector{Module})
         end
     end
     return false, mtimes
+end
+
+# /api routes.
+
+module Templates
+
+import HTTP
+import HypertextTemplates: @template_str, HypertextTemplates
+
+template"views/api.html"
+template"views/components.html"
+
+function render(template::Function, args...; kws...)
+    return HTTP.Response(
+        200,
+        ["Content-Type" => "text/html"],
+        HypertextTemplates.render(template, args...; kws...),
+    )
+end
+
+end
+
+function docs(mod::Module, handler::Function, sig::Type{R}) where {R<:ReloadableMiddleware.Req}
+    meta = Docs.meta(mod)
+    sig = Tuple{sig}
+    binding = Docs.aliasof(handler, sig)
+    if haskey(meta, binding)
+        docs = meta[binding].docs
+        haskey(docs, sig) && return Docs.formatdoc(docs[sig])
+    end
+    return nothing
+end
+
+function api_view(req, routes, api)
+    content = nothing
+    metadata = nothing
+    title = "API Explorer"
+    endpoints = []
+    for route in routes
+        method = route.method
+        path = route.path
+        handler = route.handler
+        mod = route.mod
+        sig = route.sig
+        url = "$api/$(HTTP.URIs.escapeuri(path))/$(method)"
+        current = req.target == url
+        if current
+            content = docs(mod, handler, sig)
+            file, line = functionloc(handler, Tuple{sig})
+            file = HTTP.URIs.escapeuri(file)
+            param, query, form = format_sig(sig)
+            metadata = (; method, path, file, line, param, query, form)
+            title = "$method $path"
+        end
+        push!(endpoints, (; method, url, name = path, current))
+    end
+    return Templates.render(
+        Templates.api;
+        api,
+        endpoints,
+        content,
+        metadata,
+        title,
+        style_css = "$api/style.css",
+    )
+end
+
+function format_sig(
+    ::Type{<:ReloadableMiddleware.Req{M,P,param,query,query_defaults,form,form_defaults}},
+) where {M,P,param,query,query_defaults,form,form_defaults}
+    fmt(::Type{NamedTuple{names,types}}) where {names,types} = [
+        (; name = string(name), type = string(type)) for
+        (name, type) in zip(names, types.parameters)
+    ]
+    return (param = fmt(param), query = fmt(query), form = fmt(form))
+end
+
+const STYLE_CSS = RelocatableFolders.@path "views/dist/output.css"
+
+function style_css(::HTTP.Request)
+    return HTTP.Response(200, ["Content-Type" => "text/css"], read(STYLE_CSS, String))
+end
+
+function open_file(req)
+    params = HTTP.getparams(req)
+    file = params["file"]
+    line = params["line"]
+    if file == "nothing"
+        return HTTP.Response(404, ["Content-Type" => "text/plain"], "")
+    else
+        file = HTTP.URIs.unescapeuri(file)
+        line = something(tryparse(Int, line), 0)
+        InteractiveUtils.edit(file, line)
+        return HTTP.Response(200, ["Content-Type" => "text/plain"], "")
+    end
+end
+
+function ReloadableMiddleware._add_api_routes!(router::HTTP.Router, routes, api::String)
+    HTTP.register!(router, "POST", "$api/open-file/{file}/{line}", open_file)
+    HTTP.register!(router, "GET", "$api/style.css", style_css)
+    HTTP.register!(router, "GET", "$api/{path}/{method}", (req) -> api_view(req, routes, api))
+    HTTP.register!(router, "GET", api, (req) -> api_view(req, routes, api))
 end
 
 # Hot reloader.
