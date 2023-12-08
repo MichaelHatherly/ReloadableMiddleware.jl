@@ -268,23 +268,35 @@ function _header_contains(req::HTTP.Request, (key, value)::Pair)
 end
 
 """
-    ModuleRouter(mod::Module)
-    ModuleRouter(mods::Vector{Module})
+    ModuleRouter(mod::Module; api_route = "/api")
+    ModuleRouter(mods::Vector{Module}; api_route = "/api")
 
 A router that automatically registers all functions in a module as routes if
 they have a `@target` annotation. When `Revise` is loaded then the router will
 be automatically updated when anything in the module changes, such as new
 routes, or removed routes.
+
+`api_route` is the route prefix that will be used for displaying the route table
+and information about all routes defined by this router. You can change the name
+of this route by passing a different value to `api_route`. Navigating to this
+route will show a table of all routes that are registered in the module(s). This
+is a useful debugging tool to see what routes are available and what their
+signatures are along with any written documentation. When not in a development
+environment (no `Revise` loaded) then this route will not be available.
 """
 mutable struct ModuleRouter
     base::HTTP.Router
     mods::Vector{Module}
     mtimes::Dict{String,Float64}
     router::HTTP.Router
+    api::String
 
-    function ModuleRouter(mods::Vector{Module})
+    function ModuleRouter(mods::Vector{Module}; api = "/api")
+        if !startswith(api, "/")
+            error("`api` must be a valid route path starting with a `/`.")
+        end
         r = HTTP.Router()
-        return new(r, mods, Dict(), _build_router(r, mods))
+        return new(r, mods, Dict(), _build_router(r, mods, api), api)
     end
     ModuleRouter(mod::Module) = ModuleRouter([mod])
 end
@@ -293,11 +305,12 @@ end
 _handle_router_call(mr, req) = _router_call(mr, req)
 _router_call(mr::ModuleRouter, req::HTTP.Request) = mr.router(req)
 
-function _build_router(base::HTTP.Router, modules::Vector{Module})
-    return _build_router_impl!(HTTP.Router(base), modules)
+function _build_router(base::HTTP.Router, modules::Vector{Module}, api::String)
+    return _build_router_impl!(HTTP.Router(base), modules, api)
 end
 
-function _build_router_impl!(router, modules::Vector{Module})
+function _build_router_impl!(router, modules::Vector{Module}, api)
+    routes = []
     for mod in modules
         for name in names(mod; all = true)
             if isdefined(mod, name) && !Base.isdeprecated(mod, name)
@@ -306,6 +319,7 @@ function _build_router_impl!(router, modules::Vector{Module})
                     for m in methods(object, mod)
                         _register_route!(
                             router,
+                            routes,
                             object,
                             mod,
                             _tuple_type_head(Base.tuple_type_tail(m.sig)),
@@ -315,6 +329,7 @@ function _build_router_impl!(router, modules::Vector{Module})
             end
         end
     end
+    _add_api_routes!(router, routes, api)
     return router
 end
 
@@ -323,14 +338,20 @@ _tuple_type_head(T::Type{<:Tuple}) = fieldtype(T, 1)
 
 function _register_route!(
     router::HTTP.Router,
+    routes::Vector,
     handler::F,
     mod::Module,
     REQ::Type{<:Req{Method,Path}},
 ) where {F<:Function,Method,Path}
-    HTTP.register!(router, String(Method), String(Path), ReqBuilder{REQ,F}(handler))
+    method = String(Method)
+    path = String(Path)
+    HTTP.register!(router, method, path, ReqBuilder{REQ,F}(handler))
+    push!(routes, (; method, path, handler, mod, sig = REQ))
     return nothing
 end
-_register_route!(::HTTP.Router, ::Function, mod::Module, other) = nothing
+_register_route!(::HTTP.Router, ::Vector, ::Function, mod::Module, other) = nothing
+
+_add_api_routes!(router, routes, api) = nothing
 
 struct RouteInfo
     method::String
@@ -358,7 +379,7 @@ struct RouteTable
     routes::Vector{RouteInfo}
 
     function RouteTable(mods::Union{Module,Vector{Module}})
-        return new(_build_router_impl!([], vcat(mods)))
+        return new(_build_router_impl!([], vcat(mods), "/api"))
     end
 end
 
@@ -392,6 +413,7 @@ end
 
 function _register_route!(
     routes::Vector,
+    ::Vector,
     handler::F,
     mod::Module,
     REQ::Type{<:Req{Method,Path}},
@@ -399,7 +421,7 @@ function _register_route!(
     push!(routes, RouteInfo(Method, Path, handler, mod, REQ))
     return nothing
 end
-_register_route!(::Vector, ::Function, mod::Module, other) = nothing
+_register_route!(::Vector, ::Vector, ::Function, mod::Module, other) = nothing
 
 # Server state.
 

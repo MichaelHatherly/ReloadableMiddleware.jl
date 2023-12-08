@@ -140,6 +140,25 @@ middleware if it is included in the router stack. This means that you can make
 changes to the `Routes` module and have them automatically reflected in the
 running server as soon as changes are made and you save the file.
 
+## The `/api` route and "API Explorer" UI
+
+During development it can be useful to have a way to explore the API that your
+server exposes. To this end, the `ModuleRouter` automatically adds a `/api`
+route to the router which can be used to explore the API via a web interface.
+In production (when `Revise` is loaded) this route does not exist. If the
+default `/api` route conflicts with your application then you can change the
+route by passing the `api_route` keyword argument to the `ModuleRouter`
+constructor.
+
+Each endpoint that your application exposes is displayed as a separate page
+which includes all `param`, `query`, and `form` fields that are defined for
+that endpoint. In addition, any docstrings attached to endpoints are included
+in the page for easy reference.
+
+When the `HotReloader` middleware is present in the router stack then the `/api`
+route will automatically update itself when changes are made to any routes, such
+as docstring changes, or changes to the `@req` macros that define the routes.
+
 ### `@req` syntax
 
 ```julia
