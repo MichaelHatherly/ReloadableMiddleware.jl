@@ -1,7 +1,7 @@
 name = "ReloadableMiddleware"
 uuid = "6b39ad65-d4e1-4a6a-9d75-56e3fde28494"
 authors = ["Michael Hatherly <michaelhatherly@gmail.com>"]
-version = "1.3.0"
+version = "1.3.1"
 
 [deps]
 BundledWebResources = "56c11eb9-1257-4f49-abe4-0ac93e2bfd0a"
