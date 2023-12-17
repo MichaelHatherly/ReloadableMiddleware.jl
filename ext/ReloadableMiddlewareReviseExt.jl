@@ -275,9 +275,9 @@ using BundledWebResources
 
 function idiomorph()
     @comptime Resource(
-        "https://unpkg.com/idiomorph@0.0.9/dist/idiomorph.min.js";
+        "https://unpkg.com/idiomorph@0.2.0/dist/idiomorph.min.js";
         name = "idiomorph.js",
-        sha256 = "b9b33450f762cd8510d70e9c5bc3da74ac38127da4089c1932b5898337d7833b",
+        sha256 = "41a8b5d47f7b5d5d9980774ce072f32eda1a0cdc9d194d90dd2fe537cd534d4a",
     )
 end
 
