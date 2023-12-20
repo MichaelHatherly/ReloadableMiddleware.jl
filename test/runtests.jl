@@ -1,3 +1,4 @@
+using Colors
 using JET
 using ReloadableMiddleware
 using Test
@@ -7,15 +8,20 @@ import ReloadableMiddleware.HTTP
 
 module Endpoints
 
+using Colors
+using EnumX
 using ReloadableMiddleware
 
-import ReloadableMiddleware.JSON3.StructTypes
+import ReloadableMiddleware.StructTypes
 
 struct CustomJSONType
     a::Int
     b::String
 end
 StructTypes.StructType(::Type{CustomJSONType}) = StructTypes.Struct()
+
+@enum Fruit apple banana pineapple
+@enumx Veg broccoli carrot potato
 
 f_1(req::@req GET "/") = req
 f_2(req::@req POST "/1/$id") = req
@@ -27,6 +33,9 @@ f_6(req::@req GET "/5/$(id::Float64)/$(name::String)") = req
 g_1(req::@req GET "/g/" query = {s}) = req
 g_2(req::@req POST "/g/1/$id" form = {s::Int}) = req
 g_3(req::@req PATCH "/g/2/$(id::Int)" form = {s, t::Base.UUID}) = req
+g_4(req::@req GET "/g/4/$(fruit::Fruit)") = req
+g_5(req::@req GET "/g/5/$(veg::Veg.T)") = req
+g_6(req::@req GET "/g/6/$(color::Colorant)") = req
 
 h_1(req::@req GET "/h/" query = {s = "default"}) = req
 h_2(req::@req POST "/h/1/$id" form = {s::Int = 123}) = req
@@ -201,6 +210,36 @@ end
     )
 
     test_wrapper(
+        req = HTTP.Request("GET", "/g/4/apple"),
+        f = Endpoints.g_4,
+        method = "GET",
+        target = "/g/4/apple",
+        params = (; fruit = Endpoints.apple),
+        query = (;),
+        form = (;),
+    )
+
+    test_wrapper(
+        req = HTTP.Request("GET", "/g/5/broccoli"),
+        f = Endpoints.g_5,
+        method = "GET",
+        target = "/g/5/broccoli",
+        params = (; veg = Endpoints.Veg.broccoli),
+        query = (;),
+        form = (;),
+    )
+
+    test_wrapper(
+        req = HTTP.Request("GET", "/g/6/DeepSkyBlue"),
+        f = Endpoints.g_6,
+        method = "GET",
+        target = "/g/6/DeepSkyBlue",
+        params = (; color = Colors.RGB{Colors.N0f8}(0.0, 0.749, 1.0)),
+        query = (;),
+        form = (;),
+    )
+
+    test_wrapper(
         req = HTTP.Request("GET", "/h/"),
         f = Endpoints.h_1,
         method = "GET",
@@ -319,7 +358,7 @@ end
     @test contains(text, "PATCH")
     @test contains(text, "Endpoints")
     @test contains(text, "f_1")
-    @test contains(text, "runtests.jl:20")
+    @test contains(text, "runtests.jl:26")
 
     @testset "api route" begin
         res = router(HTTP.Request("GET", "/api"))

@@ -8,6 +8,7 @@ import JSON3
 import MIMEs
 import MacroTools
 import PackageExtensionCompat
+import StructTypes
 import URIs
 
 # Exports.
@@ -188,7 +189,24 @@ _parse(::Type{T}, vec::Vector{String}) where {T} = _parse(T, only(vec))
 _parse(::Type{Vector{T}}, vec::Vector{String}) where {T} = [_parse(T, each) for each in vec]
 
 _parse(::Type{String}, value::String) = value
-_parse(::Type{T}, value::String) where {T} = Base.parse(T, value)
+_parse(::Type{T}, value::String) where {T} = _parse(T, StructTypes.StructType(T), value)
+
+# Handle scalar types using StructTypes deserialization to support such custom
+# types as Enums. Fallback to Base.parse for other types, such as
+# `Colors.Colorant` which uses `parse` to support parsing color names.
+function _parse(
+    ::Type{T},
+    ::Union{
+        StructTypes.StringType,
+        StructTypes.NumberType,
+        StructTypes.BoolType,
+        StructTypes.NullType,
+    },
+    value::String,
+) where {T}
+    return StructTypes.constructfrom(T, value)
+end
+_parse(::Type{T}, ::StructTypes.StructType, value::String) where {T} = Base.parse(T, value)
 
 function _parse_kv_or_error(
     req::HTTP.Request,
