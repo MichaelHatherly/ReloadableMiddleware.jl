@@ -189,7 +189,8 @@ _parse(::Type{T}, vec::Vector{String}) where {T} = _parse(T, only(vec))
 _parse(::Type{Vector{T}}, vec::Vector{String}) where {T} = [_parse(T, each) for each in vec]
 
 _parse(::Type{String}, value::String) = value
-_parse(::Type{T}, value::String) where {T} = _parse(T, StructTypes.StructType(T), value)
+_parse(::Type{T}, value::Union{HTTP.Multipart,String}) where {T} =
+    _parse(T, StructTypes.StructType(T), value)
 
 # Handle scalar types using StructTypes deserialization to support such custom
 # types as Enums. Fallback to Base.parse for other types, such as
@@ -207,6 +208,7 @@ function _parse(
     return StructTypes.constructfrom(T, value)
 end
 _parse(::Type{T}, ::StructTypes.StructType, value::String) where {T} = Base.parse(T, value)
+_parse(::Type{T}, ::StructTypes.StructType, value::HTTP.Multipart) where {T} = T(value)
 
 function _parse_kv_or_error(
     req::HTTP.Request,
@@ -250,7 +252,11 @@ function _build_form(
     defaults,
     req::HTTP.Request,
 )::NamedTuple{K,T} where {K,T}
-    if _header_contains(req, "Content-Type" => "application/json")
+    content_type = _content_type(req)
+    if startswith(content_type, "multipart/form-data")
+        parts = _multipart_form(req)
+        return _build_nt(K, T, req, defaults, parts)
+    elseif content_type == "application/json"
         return JSON3.read(req.body, NamedTuple{K,T}; allow_inf = true)
     else
         params = _queryparams(String(req.body))
@@ -266,6 +272,14 @@ function _build_nt(K, T, req, defaults, dict)
     ))
 end
 
+function _multipart_form(req::HTTP.Request)
+    dict = Dict{String,HTTP.Multipart}()
+    for part in HTTP.parse_multipart_form(req)
+        dict[part.name] = part
+    end
+    return dict
+end
+
 function _queryparams(pairs::Vector{Pair{String,String}})
     dict = Dict{String,Vector{String}}()
     for (key, value) in pairs
@@ -276,13 +290,13 @@ end
 _queryparams(s::String) = _queryparams(URIs.queryparampairs(s))
 _queryparams(uri::URIs.URI) = _queryparams(URIs.queryparampairs(uri))
 
-function _header_contains(req::HTTP.Request, (key, value)::Pair)
+function _content_type(req::HTTP.Request)
     for (k, v) in req.headers
-        if k == key
-            return v == value
+        if k == "Content-Type"
+            return v
         end
     end
-    return false
+    return ""
 end
 
 """

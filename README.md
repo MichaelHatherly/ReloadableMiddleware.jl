@@ -247,3 +247,34 @@ Content-Type: application/json
     }
 }
 ```
+
+#### Multi-part form data
+
+Multi-part form data can be parsed by setting the `Content-Type` header to
+`multipart/form-data` in the request. This will cause the `form` fields to be
+parsed as multi-part form data instead of url encoded, or JSON data. The `{...}`
+syntax is still used, and each field in the `NamedTuple` is a single value from
+the submitted form data that is deserialized into the declared type separately.
+
+```julia
+struct File
+    name::String
+    data::Vector{UInt8}
+end
+
+function File(multipart::HTTP.Multipart)
+    name = multipart.filename
+    data = take!(multipart.data)
+    File(name, data)
+end
+
+function multi_part_endpoint(::@req POST "/upload_file" form = {file::File})
+    # `file` is parsed as a `File` value.
+end
+```
+
+Deserialization into the declared field type is handled by defining a
+constructor for the type that takes a `HTTP.Multipart` object. The
+`HTTP.Multipart` object contains the filename and data for the file along with
+other data. Consult the `HTTP.jl` documentation for more information on the
+`HTTP.Multipart` type.

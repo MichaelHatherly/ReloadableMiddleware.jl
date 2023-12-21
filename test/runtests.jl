@@ -8,6 +8,9 @@ import ReloadableMiddleware.HTTP
 
 module Endpoints
 
+import Base: ==
+import ReloadableMiddleware.HTTP
+
 using Colors
 using EnumX
 using ReloadableMiddleware
@@ -22,6 +25,18 @@ StructTypes.StructType(::Type{CustomJSONType}) = StructTypes.Struct()
 
 @enum Fruit apple banana pineapple
 @enumx Veg broccoli carrot potato
+
+struct FileContent
+    filename::String
+    content::Vector{UInt8}
+end
+(==)(a::FileContent, b::FileContent) = a.filename == b.filename && a.content == b.content
+
+function FileContent(multipart::HTTP.Multipart)
+    filename = multipart.filename
+    content = take!(multipart.data)
+    return FileContent(filename, content)
+end
 
 f_1(req::@req GET "/") = req
 f_2(req::@req POST "/1/$id") = req
@@ -69,6 +84,9 @@ function h_6(
         query = {ids::Vector{Int} = Int[], values::Vector{String}, target},
     ),
 )
+    return req
+end
+function h_7(req::@req(POST, "/h/7/$(id::Int)", form = {file::FileContent},))
     return req
 end
 
@@ -339,6 +357,25 @@ end
         form = (;),
     )
 
+    let boundary = "---------------------------26803618931735398227726670333"
+        filename = "file.txt"
+        content = "content"
+        body = "--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"$filename\"\r\nContent-Type: text/plain\r\n\r\n$content\r\n--$boundary--\r\n"
+        headers = [
+            "Content-Type" => "multipart/form-data; boundary=$boundary",
+            "Content-Length" => length(body),
+        ]
+        test_wrapper(
+            req = HTTP.Request("POST", "/h/7/123", headers, body),
+            f = Endpoints.h_7,
+            method = "POST",
+            target = "/h/7/123",
+            params = (; id = 123),
+            query = (;),
+            form = (; file = Endpoints.FileContent(filename, Vector{UInt8}(content)),),
+        )
+    end
+
     # Ensure that running JET on these kinds of endpoints shows up the
     # undefined variable errors that are present.
     for endpoint in (Endpoints.broken_1, Endpoints.broken_2, Endpoints.broken_3)
@@ -358,7 +395,7 @@ end
     @test contains(text, "PATCH")
     @test contains(text, "Endpoints")
     @test contains(text, "f_1")
-    @test contains(text, "runtests.jl:26")
+    @test contains(text, "runtests.jl:41")
 
     @testset "api route" begin
         res = router(HTTP.Request("GET", "/api"))
