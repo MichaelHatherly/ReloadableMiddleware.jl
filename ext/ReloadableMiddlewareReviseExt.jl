@@ -258,7 +258,14 @@ function _insert_hot_reloader_script(response::HTTP.Response, address::AbstractS
             if (event.data === "reload") {
                 const response = await fetch(location.pathname);
                 const text = await response.text();
-                Idiomorph.morph(document.documentElement, text);
+                const stripped = text.replace("<!DOCTYPE html>", "");
+                try {
+                    Idiomorph.morph(document.documentElement, stripped, { morphStyle: 'outerHTML' });
+                    window.dispatchEvent(new Event("ReloadableMiddleware:HotReload"));
+                } catch (error) {
+                    console.warn("Failed to morph DOM, reloading instead.\\n", error);
+                    location.reload();
+                };
             };
         };
         </script>
@@ -275,9 +282,9 @@ using BundledWebResources
 
 function idiomorph()
     @comptime Resource(
-        "https://unpkg.com/idiomorph@0.2.0/dist/idiomorph.min.js";
+        "https://unpkg.com/idiomorph@0.2.0/dist/idiomorph.js";
         name = "idiomorph.js",
-        sha256 = "41a8b5d47f7b5d5d9980774ce072f32eda1a0cdc9d194d90dd2fe537cd534d4a",
+        sha256 = "71808a73fb69fc60082d6fe40bba4b92e2b3b500bf1cd31c73113ab8b6ab82b0",
     )
 end
 
