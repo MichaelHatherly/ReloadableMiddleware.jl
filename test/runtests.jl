@@ -135,6 +135,9 @@ end
         form = (;),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.f_1) == "/"
+    @test_throws ErrorException ReloadableMiddleware.url(Endpoints.f_1, (; id = 123))
+
     @test router(HTTP.Request("GET", "/123")).status == 404
 
     test_wrapper(;
@@ -147,6 +150,9 @@ end
         form = (;),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.f_2, (; id = "123")) == "/1/123"
+    @test_throws ErrorException ReloadableMiddleware.url(Endpoints.f_2)
+
     test_wrapper(
         req = HTTP.Request("PATCH", "/2/123"),
         f = Endpoints.f_3,
@@ -156,6 +162,9 @@ end
         query = (;),
         form = (;),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.f_3, (; id = 123)) == "/2/123"
+    @test_throws ErrorException ReloadableMiddleware.url(Endpoints.f_3)
 
     test_wrapper(
         req = HTTP.Request("PUT", "/3/123e4567-e89b-12d3-a456-426655440000"),
@@ -167,6 +176,11 @@ end
         form = (;),
     )
 
+    @test ReloadableMiddleware.url(
+        Endpoints.f_4,
+        (; id = Base.UUID("123e4567-e89b-12d3-a456-426655440000")),
+    ) == "/3/123e4567-e89b-12d3-a456-426655440000"
+
     test_wrapper(
         req = HTTP.Request("DELETE", "/4/123/abc"),
         f = Endpoints.f_5,
@@ -176,6 +190,8 @@ end
         query = (;),
         form = (;),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.f_5, (; id = "123", name = "abc")) == "/4/123/abc"
 
     test_wrapper(
         req = HTTP.Request("GET", "/5/123.0/abc"),
@@ -187,6 +203,8 @@ end
         form = (;),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.f_6, (; id = 123.0, name = "abc")) == "/5/123.0/abc"
+
     test_wrapper(
         req = HTTP.Request("GET", "/g/?s=abc"),
         f = Endpoints.g_1,
@@ -196,6 +214,8 @@ end
         query = (; s = "abc"),
         form = (;),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.g_1; query = (; s = "abc")) == "/g/?s=abc"
 
     test_wrapper(
         req = HTTP.Request(
@@ -212,6 +232,8 @@ end
         form = (; s = 123),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.g_2, (; id = "123")) == "/g/1/123"
+
     test_wrapper(
         req = HTTP.Request(
             "PATCH",
@@ -227,6 +249,8 @@ end
         form = (; s = "123", t = Base.UUID("123e4567-e89b-12d3-a456-426655440000")),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.g_3, (; id = 123)) == "/g/2/123"
+
     test_wrapper(
         req = HTTP.Request("GET", "/g/4/apple"),
         f = Endpoints.g_4,
@@ -236,6 +260,8 @@ end
         query = (;),
         form = (;),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.g_4, (; fruit = Endpoints.apple)) == "/g/4/apple"
 
     test_wrapper(
         req = HTTP.Request("GET", "/g/5/broccoli"),
@@ -247,6 +273,9 @@ end
         form = (;),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.g_5, (; veg = Endpoints.Veg.broccoli)) ==
+          "/g/5/broccoli"
+
     test_wrapper(
         req = HTTP.Request("GET", "/g/6/DeepSkyBlue"),
         f = Endpoints.g_6,
@@ -257,6 +286,12 @@ end
         form = (;),
     )
 
+    # TODO: No matching methods.
+    # @test ReloadableMiddleware.url(
+    #     Endpoints.g_6,
+    #     (; color = Colors.RGB{Colors.N0f8}(0.0, 0.749, 1.0)),
+    # ) == "/g/6/DeepSkyBlue"
+
     test_wrapper(
         req = HTTP.Request("GET", "/h/"),
         f = Endpoints.h_1,
@@ -266,6 +301,8 @@ end
         query = (; s = "default"),
         form = (;),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.h_1; query = (; s = "default")) == "/h/?s=default"
 
     test_wrapper(
         req = HTTP.Request(
@@ -282,6 +319,8 @@ end
         form = (; s = 124),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.h_2, (; id = "123")) == "/h/1/123"
+
     test_wrapper(
         req = HTTP.Request("POST", "/h/1/123"),
         f = Endpoints.h_2,
@@ -291,6 +330,8 @@ end
         query = (;),
         form = (; s = 123),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.h_2, (; id = "123")) == "/h/1/123"
 
     test_wrapper(
         req = HTTP.Request(
@@ -307,6 +348,8 @@ end
         form = (; s = "123", t = Base.UUID("123e4567-e89b-12d3-a456-426655440001")),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.h_3, (; id = 123)) == "/h/2/123"
+
     test_wrapper(
         req = HTTP.Request("PATCH", "/h/2/123"),
         f = Endpoints.h_3,
@@ -316,6 +359,8 @@ end
         query = (;),
         form = (; s = "default", t = Base.UUID("123e4567-e89b-12d3-a456-426655440000")),
     )
+
+    @test ReloadableMiddleware.url(Endpoints.h_3, (; id = 123)) == "/h/2/123"
 
     test_wrapper(
         req = HTTP.Request(
@@ -332,6 +377,8 @@ end
         form = (; a = [1, 2], b = Dict("c" => 3, "d" => 4), c = Endpoints.CustomJSONType(0, "")),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.h_4) == "/h/json"
+
     test_wrapper(
         req = HTTP.Request(
             "POST",
@@ -347,6 +394,8 @@ end
         form = (; ids = [1, 2], values = ["a", "b"], target = "123"),
     )
 
+    @test ReloadableMiddleware.url(Endpoints.h_5, (; id = 123)) == "/h/5/123"
+
     test_wrapper(
         req = HTTP.Request("GET", "/h/6/123?ids=1&values=a&values=b&target=123"),
         f = Endpoints.h_6,
@@ -356,6 +405,12 @@ end
         query = (; ids = Int[1], values = String["a", "b"], target = "123"),
         form = (;),
     )
+
+    @test ReloadableMiddleware.url(
+        Endpoints.h_6,
+        (; id = 123);
+        query = (; ids = [1], values = ["a", "b"], target = "123"),
+    ) == "/h/6/123?ids=1&values=a&values=b&target=123"
 
     let boundary = "---------------------------26803618931735398227726670333"
         filename = "file.txt"
@@ -374,6 +429,8 @@ end
             query = (;),
             form = (; file = Endpoints.FileContent(filename, Vector{UInt8}(content)),),
         )
+
+        @test ReloadableMiddleware.url(Endpoints.h_7, (; id = 123)) == "/h/7/123"
     end
 
     # Ensure that running JET on these kinds of endpoints shows up the
