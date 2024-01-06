@@ -38,23 +38,23 @@ function FileContent(multipart::HTTP.Multipart)
     return FileContent(filename, content)
 end
 
-f_1(req::@req GET "/") = req
+@route f_1(req::@req GET "/") = req
 f_2(req::@req POST "/1/$id") = req
 f_3(req::@req PATCH "/2/$(id::Int)") = req
 f_4(req::@req PUT "/3/$(id::Base.UUID)") = req
-f_5(req::@req DELETE "/4/$(id)/$(name)") = req
+@route f_5(req::@req DELETE "/4/$(id)/$(name)") = req
 f_6(req::@req GET "/5/$(id::Float64)/$(name::String)") = req
 
 g_1(req::@req GET "/g/" query = {s}) = req
-g_2(req::@req POST "/g/1/$id" form = {s::Int}) = req
+@route g_2(req::@req POST "/g/1/$id" form = {s::Int}) = req
 g_3(req::@req PATCH "/g/2/$(id::Int)" form = {s, t::Base.UUID}) = req
 g_4(req::@req GET "/g/4/$(fruit::Fruit)") = req
-g_5(req::@req GET "/g/5/$(veg::Veg.T)") = req
+@route g_5(req::@req GET "/g/5/$(veg::Veg.T)") = req
 g_6(req::@req GET "/g/6/$(color::Colorant)") = req
 
 h_1(req::@req GET "/h/" query = {s = "default"}) = req
 h_2(req::@req POST "/h/1/$id" form = {s::Int = 123}) = req
-function h_3(
+@route function h_3(
     req::@req(
         PATCH,
         "/h/2/$(id::Int)",
@@ -68,7 +68,7 @@ function h_4(
 )
     return req
 end
-function h_5(
+@route function h_5(
     req::@req(
         POST,
         "/h/5/$(id::Int)",
@@ -77,7 +77,7 @@ function h_5(
 )
     return req
 end
-function h_6(
+@route function h_6(
     req::@req(
         GET,
         "/h/6/$(id::Int)",
@@ -86,12 +86,12 @@ function h_6(
 )
     return req
 end
-function h_7(req::@req(POST, "/h/7/$(id::Int)", form = {file::FileContent},))
+@route function h_7(req::@req(POST, "/h/7/$(id::Int)", form = {file::FileContent},))
     return req
 end
 
 broken_1(req::@req GET "/broken/1/$id") = req.params.unknown
-broken_2(req::@req GET "/broken/2/$id") = req.query.unknown
+@route broken_2(req::@req GET "/broken/2/$id") = req.query.unknown
 broken_3(req::@req GET "/broken/3/$id") = req.form.unknown
 
 end

@@ -61,37 +61,38 @@ defined in a given module, or modules. The router automatically updates itself w
 changes are detected by `Revise` if a `HotReloader` is present in the router stack.
 
 You can define functions within a module that should act as endpoints for the
-router with the `@req` macro. Some examples follow which describe the general
-form of the `@req` macro and what it supports.
+router with the `@route` and `@req` macros. Some examples follow which describe
+the general form of the `@req` macro and what it supports. `@route` simply marks the
+function as a route handler.
 
 ```julia
 module Routes
 
-function index(req::@req GET "/")
+@route function index(req::@req GET "/")
     # Just a plain GET / request.
 end
 
-function search(req::@req GET "/search" query = {q})
+@route function search(req::@req GET "/search" query = {q})
     # GET /search?q=... where the `q` parameter is left as a `String` value.
 end
 
-function table(req::@req GET "/table" query = {page::Int})
+@route function table(req::@req GET "/table" query = {page::Int})
     # GET /table?page=... where the `page` parameter is parsed as an `Int` for pagination.
     # When `page` is not parsable to an `Int` then we don't call this function, and an error
     # is returned to the client. So we can guarantee that `page` exists and is an `Int` here.
 end
 
-function user_account(req::@req GET "/user/$(id::Base.UUID)")
+@route function user_account(req::@req GET "/user/$(id::Base.UUID)")
     # GET /user/{id} where the `id` parameter is parsed as a `UUID`. When not parsable to a
     # `UUID` then we don't call this function, and an error is returned to the client.
 end
 
-function blog_post(req::@req GET "/blog/$(title)")
+@route function blog_post(req::@req GET "/blog/$(title)")
     # GET /blog/{title} where the `title` parameter is parsed as a `String`.
 end
 
 # Use `(` and `)` when you need multi-line syntax.
-function edit_post(
+@route function edit_post(
     req::@req(
         POST,
         "/blog/$(title)",
@@ -108,7 +109,7 @@ function edit_post(
     # if not provided.
 end
 
-function edit_post_form_data(
+@route function edit_post_form_data(
     req::@req(
         POST,
         "/blog/$(title)",
@@ -185,7 +186,7 @@ These values are then available as fields in the `params` field of the `Req` obj
 passed to the function. For example, the following function:
 
 ```julia
-function get_post(req::@req GET "/blog/$(id::Base.UUID)")
+@route function get_post(req::@req GET "/blog/$(id::Base.UUID)")
     req.params.id # This is a `Base.UUID` value.
 end
 ```
@@ -229,7 +230,7 @@ struct CustomType
     y::Float64
 end
 
-function json_endpoint(req::@req POST "/json" form = {x::CustomType})
+@route function json_endpoint(req::@req POST "/json" form = {x::CustomType})
     # `x` is parsed as a `CustomType` value.
 end
 ```
@@ -268,7 +269,7 @@ function File(multipart::HTTP.Multipart)
     File(name, data)
 end
 
-function multi_part_endpoint(::@req POST "/upload_file" form = {file::File})
+@route function multi_part_endpoint(::@req POST "/upload_file" form = {file::File})
     # `file` is parsed as a `File` value.
 end
 ```
