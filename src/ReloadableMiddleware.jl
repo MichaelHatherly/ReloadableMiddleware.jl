@@ -15,6 +15,7 @@ import URIs
 # Exports.
 
 export @req
+export @route
 export url
 export HotReloader
 export ModuleRouter
@@ -42,6 +43,56 @@ _create(::Any; kws...) =
 end
 
 # Module router.
+
+__route_macro__(route) = false
+__url__(route, params, query) = nothing
+
+"""
+    @route function name(::@req ...)
+        # ...
+    end
+
+Mark a function as a route to be included in a `ModuleRouter`. There must be a
+`@req` macro call as the only function parameter that defines the request type.
+
+Routes *can* be defined without `@route` but aspects of their runtime
+performance will suffer as a result.
+"""
+macro route(expr)
+    if MacroTools.@capture(
+        expr,
+        ((f_(req_::@req(args__)) = body_)) |
+        (function f_(req_::@req(args__))
+            body_
+        end | (f_(::@req(args__)) = body_)) |
+        (function f_(::@req(args__))
+            body_
+        end)
+    )
+        method, path, params, keywords = _req_macro_impl(args...)
+        query = :(@NamedTuple{})
+        for kw in keywords
+            if MacroTools.@capture(kw, query = value_)
+                query = value
+                break
+            end
+        end
+        return esc(
+            quote
+                $expr
+                $(ReloadableMiddleware).__route_macro__(::typeof($(f))) = true
+                $(ReloadableMiddleware).__url__(
+                    ::typeof($(f)),
+                    params::$(params.args[end]),
+                    query::$(query),
+                ) = $(_gen_url_expr(path; params = :params, query = :query))
+                $f
+            end,
+        )
+    else
+        error("invalid route definition")
+    end
+end
 
 struct Optional end
 
@@ -84,7 +135,19 @@ generating URLs without having to hardcode them in your templates. The function
 will throw an error if the route function does not match the provided params and
 query so that all generated URLs are valid.
 """
-url(route::Function, params::NamedTuple = (;); query::NamedTuple = (;)) = _url(route, params, query)
+function url(route::Function, params::NamedTuple = (;); query::NamedTuple = (;))
+    if __route_macro__(route)
+        value = __url__(route, params, query)
+        if isnothing(value)
+            error("invalid params or query for route '$(route)'")
+        else
+            return value
+        end
+    else
+        # Calls into generated function code. Slower path.
+        return _url(route, params, query)
+    end
+end
 
 @generated function _url(
     f::Function,
@@ -103,6 +166,10 @@ end
 
 @generated function _gen_url(::Type{Tuple{F,T}}, params, query) where {F,T}
     path = _get_path(T)
+    return _gen_url_expr(path; params = :params, query = :query)
+end
+
+function _gen_url_expr(path::String; params, query)
     segments = split(path, "/"; keepempty = false)
     expr = Expr(:string, "/")
     no_params = true
@@ -112,16 +179,16 @@ end
         end
         if startswith(segment, "{") && endswith(segment, "}")
             key = Symbol(segment[2:end-1])
-            push!(expr.args, :(_escape_uri(params.$key)))
+            push!(expr.args, :($(_escape_uri)($params.$key)))
             no_params = false
         else
             push!(expr.args, :($segment))
         end
     end
     if no_params
-        return Expr(:string, path, :(_format_query(query)))
+        return Expr(:string, path, :($(_format_query)($query)))
     else
-        push!(expr.args, :(_format_query(query)))
+        push!(expr.args, :($(_format_query)($query)))
         return expr
     end
 end
@@ -133,8 +200,8 @@ function _format_query(nt::NamedTuple)
     for (nth, (k, v)) in enumerate(pairs(nt))
         nth > 1 && print(buffer, "&")
         if isa(v, Union{AbstractVector,Tuple})
-            for (nth, each) in enumerate(v)
-                nth > 1 && print(buffer, "&")
+            for (mth, each) in enumerate(v)
+                mth > 1 && print(buffer, "&")
                 print(buffer, k, "=", _escape_uri(each))
             end
         else
@@ -146,6 +213,8 @@ end
 _format_query(::@NamedTuple{}) = ""
 
 _escape_uri(v) = HTTP.URIs.escapeuri(string(v))
+# Fast path to avoid URI escape for these types since there is no need.
+_escape_uri(uuid::Union{Real,Base.UUID}) = string(uuid)
 
 """
     @req method path [param={}] [query={}] [form={}]
@@ -159,6 +228,13 @@ macro req(method, path, kws...)
 end
 
 function _req_macro(method, path, kws...)
+    method, path, params, keywords = _req_macro_impl(method, path, kws...)
+    return esc(
+        :($(ReloadableMiddleware).ReqTypeBuilder($(method), $(path); $(params), $(keywords...))),
+    )
+end
+
+function _req_macro_impl(method, path, kws...)
     method = String(method)
     path, params = _parse_path(path)
     keywords = []
@@ -167,9 +243,7 @@ function _req_macro(method, path, kws...)
         isnothing(type) || push!(keywords, type)
         isnothing(defaults) || push!(keywords, defaults)
     end
-    return esc(
-        :($(ReloadableMiddleware).ReqTypeBuilder($(method), $(path); $(params), $(keywords...))),
-    )
+    return method, path, params, keywords
 end
 
 function _parse_path(p::Expr)
