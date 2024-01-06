@@ -9,11 +9,13 @@ import MIMEs
 import MacroTools
 import PackageExtensionCompat
 import StructTypes
+import Tricks
 import URIs
 
 # Exports.
 
 export @req
+export url
 export HotReloader
 export ModuleRouter
 export RouteTable
@@ -73,6 +75,77 @@ function ReqTypeBuilder(
         typeof(form_defaults),
     }
 end
+
+"""
+    url(route, params=(;); query=(;))::String
+
+Construct a URL from a route function, params, and query. This is useful for
+generating URLs without having to hardcode them in your templates. The function
+will throw an error if the route function does not match the provided params and
+query so that all generated URLs are valid.
+"""
+url(route::Function, params::NamedTuple = (;); query::NamedTuple = (;)) = _url(route, params, query)
+
+@generated function _url(
+    f::Function,
+    params::Params,
+    query::Query,
+) where {Params<:NamedTuple,Query<:NamedTuple}
+    T = Tuple{<:Req{<:Any,<:Any,Params,Query}}
+    quote
+        ms = Tricks.static_methods(f, $T)
+        count = length(ms)
+        count < 1 && error("route function has no matching methods.")
+        count > 1 && error("route function has more than one matching method.")
+        return _gen_url(only(ms).sig, params, query)::String
+    end
+end
+
+@generated function _gen_url(::Type{Tuple{F,T}}, params, query) where {F,T}
+    path = _get_path(T)
+    segments = split(path, "/"; keepempty = false)
+    expr = Expr(:string, "/")
+    no_params = true
+    for (nth, segment) in enumerate(segments)
+        if nth > 1
+            push!(expr.args, "/")
+        end
+        if startswith(segment, "{") && endswith(segment, "}")
+            key = Symbol(segment[2:end-1])
+            push!(expr.args, :(_escape_uri(params.$key)))
+            no_params = false
+        else
+            push!(expr.args, :($segment))
+        end
+    end
+    if no_params
+        return Expr(:string, path, :(_format_query(query)))
+    else
+        push!(expr.args, :(_format_query(query)))
+        return expr
+    end
+end
+_get_path(::Type{<:Req{Method,Path}}) where {Method,Path} = String(Path)
+
+function _format_query(nt::NamedTuple)
+    buffer = IOBuffer()
+    print(buffer, "?")
+    for (nth, (k, v)) in enumerate(pairs(nt))
+        nth > 1 && print(buffer, "&")
+        if isa(v, Union{AbstractVector,Tuple})
+            for (nth, each) in enumerate(v)
+                nth > 1 && print(buffer, "&")
+                print(buffer, k, "=", _escape_uri(each))
+            end
+        else
+            print(buffer, k, "=", _escape_uri(v))
+        end
+    end
+    return String(take!(buffer))
+end
+_format_query(::@NamedTuple{}) = ""
+
+_escape_uri(v) = HTTP.URIs.escapeuri(string(v))
 
 """
     @req method path [param={}] [query={}] [form={}]
