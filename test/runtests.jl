@@ -1,8 +1,9 @@
 using Colors
 using JET
+using ProfileCanvas
 using ReloadableMiddleware
-using Test
 using Revise
+using Test
 
 import ReloadableMiddleware.HTTP
 
@@ -452,7 +453,7 @@ end
     @test contains(text, "PATCH")
     @test contains(text, "Endpoints")
     @test contains(text, "f_1")
-    @test contains(text, "runtests.jl:41")
+    @test contains(text, "runtests.jl:42")
 
     @testset "api route" begin
         res = router(HTTP.Request("GET", "/api"))

@@ -616,11 +616,13 @@ for storing state that should be shared between routes. Access the state with
 function ServerStateProvider(state)
     function (handler)
         function (req::HTTP.Request)
-            req.context[_SERVER_STATE_KEY] = state
+            _include_server_state!(req, state)
             return handler(req)
         end
     end
 end
+
+_include_server_state!(req, state) = req.context[_SERVER_STATE_KEY] = state
 
 function server_state(req::HTTP.Request)
     key = _SERVER_STATE_KEY
@@ -700,6 +702,89 @@ function _hot_reloader_middleware(::Any)
         end
     end
     return (; server = nothing, middleware, refresh)
+end
+
+# Request profiler:
+
+module ProfilerRoutes
+
+using HypertextTemplates
+using ReloadableMiddleware
+
+import Dates
+import HTTP
+
+template"templates/profiler/index.html"
+
+function _validate_prefix(req)
+    state = ReloadableMiddleware.server_state(req)
+    "/$(req.params.prefix)" == state.route || error("invalid route prefix.")
+    return nothing
+end
+
+@route function profiler(req::@req GET "/$(prefix)")
+    _validate_prefix(req)
+
+    profiles = ReloadableMiddleware.server_state(req).profiles
+    prefix = req.params.prefix
+
+    urls = map(sort(collect(keys(profiles)))) do target
+        items = map(reverse(profiles[target])) do (timestamp, profile)
+            (;
+                timestamp,
+                profile = profile,
+                href = "/$(prefix)/$(HTTP.URIs.escapeuri(target))/$(timestamp)",
+            )
+        end
+        (; target, profiles = items)
+    end
+
+    return HTTP.Response(200, ["Content-Type" => "text/html"], sprint(index(; urls)))
+end
+
+@route function profiler_details(req::@req GET "/$(prefix)/$(target)/$(timestamp::Dates.DateTime)")
+    _validate_prefix(req)
+
+    profiles = ReloadableMiddleware.server_state(req).profiles
+    target = HTTP.URIs.unescapeuri(req.params.target)
+    for (nth, each) in enumerate(profiles[target])
+        if each.timestamp == req.params.timestamp
+            return HTTP.Response(200, ["Content-Type" => "text/html"], each.profile)
+        end
+    end
+
+    return HTTP.Response(404, ["Content-Type" => "text/html"], "profile not found")
+end
+
+end
+
+struct ProfilerDispatchType end
+
+const ProfileStorage = Vector{@NamedTuple{timestamp::Dates.DateTime, profile::String}}
+
+_default_matcher(::HTTP.Request) = true
+_default_type(::HTTP.Request) = :default
+
+function Profiler(;
+    route::AbstractString = "/profiler",
+    matcher::Union{Base.Callable,Regex} = _default_matcher,
+    type::Union{Base.Callable,Symbol,Tuple{Symbol,Float64}} = _default_type,
+    limit::Integer = 10,
+)
+    profiles = Dict{String,ProfileStorage}()
+    profiler_router = ModuleRouter(ProfilerRoutes)
+    function (handler)
+        function (req)
+            return _handle_profiler(
+                ProfilerDispatchType(),
+                (; handler, req, route, profiler_router, matcher, type, limit, profiles),
+            )
+        end
+    end
+end
+
+function _handle_profiler(::Any, args)
+    args.handler(args.req)
 end
 
 function __init__()
