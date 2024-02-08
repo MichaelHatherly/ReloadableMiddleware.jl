@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Profiler</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <for item="url" iter="props.urls">
+      <div class="m-2 p-1 border rounded">
+        <code class="font-mono font-bold text-slate-800"
+          ><julia value="url.target"
+        /></code>
+        <ul class="p-1">
+          <for item="profile" iter="url.profiles">
+            <li>
+              <a class="text-blue-600 underline" .href="profile.href"
+                ><julia value="profile.timestamp"
+              /></a>
+            </li>
+          </for>
+        </ul>
+      </div>
+    </for>
+  </body>
+</html>
