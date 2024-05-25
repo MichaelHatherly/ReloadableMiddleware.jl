@@ -1,4 +1,7 @@
 using Colors
+@static if Base.VERSION >= v"1.7"
+    using JET
+end
 using JET
 using ReloadableMiddleware
 using Test
@@ -122,7 +125,10 @@ end
 
         @inferred f(res)
 
-        @test _no_reports(report_call(f, Tuple{typeof(res)}))
+        
+        @static if Base.VERSION >= v"1.7"
+            @test _no_reports(report_call(f, Tuple{typeof(res)}))
+        end
     end
 
     test_wrapper(
