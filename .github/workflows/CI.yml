@@ -42,7 +42,7 @@ jobs:
           - "nightly"
         os:
           - ubuntu-latest
-          - macOS-latest
+          - macOS-13
           - windows-latest
         exclude:
           - version: "1.6"
