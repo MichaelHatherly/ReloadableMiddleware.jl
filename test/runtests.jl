@@ -460,7 +460,7 @@ end
     @test contains(text, "PATCH")
     @test contains(text, "Endpoints")
     @test contains(text, "f_1")
-    @test contains(text, "runtests.jl:41")
+    @test contains(text, "runtests.jl:44")
 
     @testset "api route" begin
         res = router(HTTP.Request("GET", "/api"))
