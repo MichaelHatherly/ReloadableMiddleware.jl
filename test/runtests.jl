@@ -1,4 +1,7 @@
 using Colors
+@static if Base.VERSION >= v"1.7"
+    using JET
+end
 using JET
 using ReloadableMiddleware
 using Test
@@ -122,7 +125,10 @@ end
 
         @inferred f(res)
 
-        @test _no_reports(report_call(f, Tuple{typeof(res)}))
+        
+        @static if Base.VERSION >= v"1.7"
+            @test _no_reports(report_call(f, Tuple{typeof(res)}))
+        end
     end
 
     test_wrapper(
@@ -438,7 +444,9 @@ end
     for endpoint in (Endpoints.broken_1, Endpoints.broken_2, Endpoints.broken_3)
         for method in methods(endpoint)
             sig = Tuple{Base.tuple_type_head(Base.tuple_type_tail(method.sig))}
-            @test !_no_reports(report_call(endpoint, sig))
+            @static if Base.VERSION >= v"1.7"
+                @test !_no_reports(report_call(endpoint, sig))
+            end
         end
     end
     @test_throws ErrorException router(HTTP.Request("GET", "/broken/1/123"))
@@ -452,7 +460,7 @@ end
     @test contains(text, "PATCH")
     @test contains(text, "Endpoints")
     @test contains(text, "f_1")
-    @test contains(text, "runtests.jl:41")
+    @test contains(text, "runtests.jl:44")
 
     @testset "api route" begin
         res = router(HTTP.Request("GET", "/api"))
