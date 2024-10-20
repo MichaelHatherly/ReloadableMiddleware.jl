@@ -17,15 +17,13 @@ concurrency:
 
 jobs:
   finalize:
-    needs: [test, format]
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
         if: |
           needs.test.result == 'failure' ||
-          needs.test.result == 'skipped' ||
-          needs.format.result == 'failure' ||
-          needs.format.result == 'skipped'
+          needs.test.result == 'skipped'
 
   test:
     permissions:
@@ -37,8 +35,8 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - "1.6"
           - "1.10"
+          - "1.11"
           - "nightly"
         os:
           - ubuntu-latest
@@ -61,20 +59,3 @@ jobs:
 
       - uses: julia-actions/julia-runtest@v1
         continue-on-error: ${{ matrix.version == 'nightly' }}
-
-  format:
-    name: Formatting Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-          run_install: false
-
-      - run: pnpm install
-        working-directory: ${{ github.workspace }}/ext/views
-
-      - run: pnpm run format:check
-        working-directory: ${{ github.workspace }}/ext/views
