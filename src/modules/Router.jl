@@ -43,6 +43,8 @@ struct STREAM <: AbstractMethod end
 struct WEBSOCKET <: AbstractMethod end
 
 method_string(T::Type{<:AbstractMethod}) = String(nameof(T))
+method_string(T::Type{STREAM}) = "*"
+method_string(T::Type{WEBSOCKET}) = "*"
 
 #
 # Route macros:
@@ -70,7 +72,7 @@ macro route(method, path, handler)
 end
 
 """
-    @DELETE path function (request; [path], [query])
+    @DELETE path function (request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -84,7 +86,7 @@ macro DELETE(path, handler)
 end
 
 """
-    @GET path function (request; [path], [query])
+    @GET path function (request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -98,7 +100,7 @@ macro GET(path, handler)
 end
 
 """
-    @PATCH path function (request; [path], [query])
+    @PATCH path function (request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -112,7 +114,7 @@ macro PATCH(path, handler)
 end
 
 """
-    @POST path function (request; [path], [query], [body])
+    @POST path function (request::HTTP.Request; [path], [query], [body])
         # ...
         return response
     end
@@ -126,7 +128,7 @@ macro POST(path, handler)
 end
 
 """
-    @PUT path function (request; [path], [query])
+    @PUT path function (request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -140,12 +142,22 @@ macro PUT(path, handler)
 end
 
 """
-    @STREAM path function (stream; [path], [query])
+    @STREAM path function (stream::HTTP.Stream; [path], [query])
         # ...
-        return response
+        for each in iter
+            # ...
+            write(stream, data)
+        end
     end
 
 Register a handler for server sent events for the given `path`.
+
+Note that updating the handler body with `Revise` will not update the code of
+any active connections. You will need to restart those connections first.
+Alternatively you can break out the `for` loop body into a separate function
+that does the bulk of your processing and call it with `@invokelatest`. Best to
+not do this for production code though, and keep it only for debugging
+handlers.
 
 See [`@route`](@ref) for further details.
 """
@@ -154,12 +166,22 @@ macro STREAM(path, handler)
 end
 
 """
-    @WEBSOCKET path function (stream; [path], [query])
+    @WEBSOCKET path function (ws::HTTP.Websocket; [path], [query])
         # ...
-        return response
+        for message in ws
+            # ...
+            HTTP.send(ws, response)
+        end
     end
 
 Register a handler for websocket connections for the given `path`.
+
+Note that updating the handler body with `Revise` will not update the code of
+any active connections. You will need to restart those connections first.
+Alternatively you can break out the `for` loop body into a separate function
+that does the bulk of your processing and call it with `@invokelatest`. Best to
+not do this for production code though, and keep it only for debugging
+handlers.
 
 See [`@route`](@ref) for further details.
 """
@@ -517,9 +539,16 @@ function route_handler(::Type{STREAM}, type, user_handler)
     end
 end
 function _stream_handler(request::HTTP.Request, user_handler, request_parser)
-    nt = request_parser(request)
     stream = request.context[:stream]::HTTP.Stream
-    return _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
+    HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
+    HTTP.setheader(stream, "Cache-Control" => "no-cache")
+    HTTP.setheader(stream, "Content-Type" => "text/event-stream")
+    try
+        nt = request_parser(request)
+        return _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
+    finally
+        HTTP.closewrite(stream)
+    end
 end
 
 # Websocket handler:
@@ -531,24 +560,15 @@ function route_handler(::Type{WEBSOCKET}, type, user_handler)
     end
 end
 function _websocket_handler(request::HTTP.Request, user_handler, request_parser)
-    # TODO: this is untested.
     WS = HTTP.WebSockets
-    stream = request.context[:stream]::HTTP.Stream
-    if WS.isupgrade(stream)
-        return WS.upgrade(stream) do client_stream
-            if WS.isclosed(client_stream)
-                return nothing
-            else
-                for message in client_stream
-                    nt = request_parser(request)
-                    return _invoke_kw(user_handler, message, nt.path, nt.query, nt.body)
-                end
-            end
+    if WS.isupgrade(request)
+        stream = request.context[:stream]::HTTP.Stream
+        WS.upgrade(stream) do ws
+            nt = request_parser(request)
+            _invoke_kw(user_handler, ws::WS.WebSocket, nt.path, nt.query, nt.body)
         end
-    else
-        nt = request_parser(request)
-        return _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
     end
+    return nothing
 end
 
 """

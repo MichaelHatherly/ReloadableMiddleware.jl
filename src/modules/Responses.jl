@@ -12,6 +12,7 @@ import JSON3
 #
 
 export response
+export sse
 
 #
 # Response middleware:
@@ -145,5 +146,52 @@ function _build_respose!(response, body, content_type)
 
     return response
 end
+
+#
+# SSE:
+#
+
+"""
+    sse(stream, [data]; [event,] [id,] [retry])
+
+Format a server sent event. Write it to `stream` if provided. `event`, `id`,
+and `retry` are optional. When `data` is not provided then a single line
+`data: \\n` is written to the stream.
+"""
+sse(stream::HTTP.Stream, data::String = ""; kws...) = write(stream, _sse(data; kws...))
+
+function _sse(
+    data::String = "";
+    event::Union{Symbol,String,Nothing} = nothing,
+    id::Union{Symbol,String,Nothing} = nothing,
+    retry::Union{Int,Nothing} = nothing,
+)
+    _has_newlines(event) && throw(ArgumentError("`event` cannot contain newlines."))
+    _has_newlines(retry) && throw(ArgumentError("`retry` cannot contain newlines."))
+    _has_newlines(id) && throw(ArgumentError("`id` cannot contain newlines."))
+
+    buffer = IOBuffer()
+    _write_data(buffer, data)
+    _write_meta(buffer, :event, event)
+    _write_meta(buffer, :id, id)
+    _write_meta(buffer, :retry, retry)
+    write(buffer, "\n")
+
+    return String(take!(buffer))
+end
+
+_has_newlines(str::AbstractString) = contains(str, '\n')
+_has_newlines(s::Symbol) = Base.isidentifier(s) ? false : _has_newlines(String(s))
+_has_newlines(n::Integer) = n > 0 ? false : throw(ArgumentError("`retry` must be > 0"))
+_has_newlines(::Nothing) = false
+
+function _write_data(io::IO, data::String)
+    for line in eachsplit(data, '\n')
+        write(io, "data: $line\n")
+    end
+end
+
+_write_meta(io::IO, key::Symbol, value) = write(io, "$key: $value\n")
+_write_meta(::IO, ::Symbol, ::Nothing) = nothing
 
 end

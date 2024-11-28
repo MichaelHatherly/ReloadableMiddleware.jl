@@ -67,4 +67,14 @@ using ReloadableMiddleware.Responses
     @test String(res.body) == "<p>value</p>"
     @test only(HTTP.headers(res, "Content-Type")) == "text/html; charset=utf-8"
     @test only(HTTP.headers(res, "Content-Length")) == "12"
+
+    @test Responses._sse("content") == "data: content\n\n"
+    @test Responses._sse("content\nsecond") == "data: content\ndata: second\n\n"
+    @test Responses._sse("content"; event=:event) == "data: content\nevent: event\n\n"
+    @test Responses._sse("content"; event=:event, id="1") == "data: content\nevent: event\nid: 1\n\n"
+    @test Responses._sse("content"; event=:event, id="1", retry=2) == "data: content\nevent: event\nid: 1\nretry: 2\n\n"
+    @test Responses._sse() == "data: \n\n"
+
+    @test_throws ArgumentError Responses._sse(; event="\n")
+    @test_throws ArgumentError Responses._sse(; retry=-1)
 end

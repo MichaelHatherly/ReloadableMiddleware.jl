@@ -74,6 +74,14 @@ end
     return body.multipart.file
 end
 
+@STREAM "/stream" function (stream)
+    #
+end
+
+@WEBSOCKET "/ws" function (ws)
+    #
+end
+
 end
 
 @testset "Router" begin
