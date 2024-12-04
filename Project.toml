@@ -16,9 +16,11 @@ Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 
 [weakdeps]
+Bonito = "824d6782-a2ef-11e9-3a09-e5662e0c26f8"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 
 [extensions]
+ReloadableMiddlewareBonitoExt = "Bonito"
 ReloadableMiddlewareReviseExt = "Revise"
 
 [compat]

@@ -12,9 +12,11 @@ include("modules/Errors.jl")
 include("modules/Context.jl")
 include("modules/Docs.jl")
 include("modules/Server.jl")
+include("modules/Extensions.jl")
 
 # Exports:
 
+export Extensions
 export Responses
 export Router
 export Server
