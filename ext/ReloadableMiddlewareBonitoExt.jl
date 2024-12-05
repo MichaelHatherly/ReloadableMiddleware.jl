@@ -62,14 +62,43 @@ abstract type AbstractBonitoContext end
 # Bonito asset serving:
 #
 
+struct TaggedAsset
+    session_id::Union{Nothing,String}
+    asset::Bonito.AbstractAsset
+
+    function TaggedAsset(asset::Bonito.AbstractAsset)
+        session_id = _get_asset_session_id(asset)
+        return new(session_id, asset)
+    end
+end
+
+# Used to work out what session ID is associated with each binary asset. This
+# is then used to track whether an asset can be removed from the asset server
+# during the cleanup timer function. Doing it once at creation time rather than
+# later on appears to be cheaper.
+function _get_asset_session_id(asset::Bonito.BinaryAsset)
+    sm = Bonito.SerializedMessage(asset.data)
+    parts = Bonito.deserialize(sm)
+    info = get(parts, 1, nothing)
+    if isnothing(info)
+        @debug "empty message parts" asset
+        return nothing
+    else
+        data = Bonito.MsgPack.unpack(info.data)
+        session_id = get(data, 1, nothing)
+        return isa(session_id, AbstractString) ? session_id : nothing
+    end
+end
+_get_asset_session_id(::Bonito.AbstractAsset) = nothing
+
 struct BonitoAssetServer <: Bonito.AbstractAssetServer
     endpoint::String
-    files::Dict{String,Bonito.AbstractAsset}
+    files::Dict{String,TaggedAsset}
     lock::ReentrantLock
 
     function BonitoAssetServer(endpoint::String)
         endpoint = "$endpoint/assets/"
-        return new(endpoint, Dict{String,Bonito.AbstractAsset}(), ReentrantLock())
+        return new(endpoint, Dict{String,TaggedAsset}(), ReentrantLock())
     end
 end
 
@@ -79,9 +108,13 @@ function Bonito.url(s::BonitoAssetServer, asset::Bonito.AbstractAsset)
     else
         key = Bonito.unique_file_key(asset)
         url = "$(s.endpoint)$(key)"
-        lock(s.lock) do
-            @debug "registering bonito asset" url
-            s.files[url] = asset
+        if haskey(s.files, url)
+            @debug "asset is already registered" url
+        else
+            lock(s.lock) do
+                @debug "registering bonito asset" url
+                s.files[url] = TaggedAsset(asset)
+            end
         end
         return url
     end
@@ -124,6 +157,7 @@ function _asset_response(asset::Bonito.Asset)
         body,
     )
 end
+_asset_response(asset::TaggedAsset) = _asset_response(asset.asset)
 
 #
 # WebSocket connection:
@@ -155,7 +189,7 @@ struct BonitoContext <: AbstractBonitoContext
         open_connections = Dict{String,WebSocketConnection{BonitoContext}}()
         cleanup_timer = Timer(cleanup_interval; interval = cleanup_interval) do timer
             try
-                cleanup_bonito(lock, open_connections, cleanup_policy)
+                cleanup_bonito(lock, open_connections, cleanup_policy, assets)
             catch error
                 @error "failed to run bonito cleanup" exception = (error, catch_backtrace())
             end
@@ -205,6 +239,18 @@ function _bonito_websocket_handler(
                 close(session)
                 lock(context.lock) do
                     delete!(context.open_connections, session_id)
+                end
+                lock(context.assets.lock) do
+                    stale_assets = String[]
+                    for (k, v) in context.assets.files
+                        if v.session_id == session_id
+                            push!(stale_assets, k)
+                        end
+                    end
+                    @debug "removing stale assets" assets = stale_assets
+                    for asset in stale_assets
+                        pop!(context.assets.files, asset)
+                    end
                 end
             end
         end
@@ -273,15 +319,47 @@ function cleanup_bonito(
     reentrant_lock::ReentrantLock,
     open_connections::Dict{String,WebSocketConnection{BonitoContext}},
     cleanup_policy::Bonito.CleanupPolicy,
+    assets::BonitoAssetServer,
 )
     lock(reentrant_lock) do
+        # Find all current resources that have an associated session ID.
+        assets_to_delete = lock(assets.lock) do
+            dict = Dict{String,Vector{String}}()
+            for (k, v) in assets.files
+                if !isnothing(v.session_id)
+                    push!(get!(Vector{String}, dict, v.session_id), k)
+                end
+            end
+            return dict
+        end
+
+        # Find all sessions that should be cleaned up.
         remove = Set{WebSocketConnection{BonitoContext}}()
         for connection in values(open_connections)
             if Bonito.should_cleanup(cleanup_policy, connection.session)
                 @debug "attempting to clean up connection" id = connection.session.id
                 push!(remove, connection)
+            else
+                # Discard assets that still have live sessions. We don't want to cleanup those.
+                delete!(assets_to_delete, connection.session.id)
             end
         end
+
+        # Clear out any session-specific assets where the is now no open session.
+        if !isempty(assets_to_delete)
+            lock(assets.lock) do
+                previous = length(assets.files)
+                for (session_id, files) in assets_to_delete
+                    @debug "removing session assets" id = session_id files
+                    for file in files
+                        pop!(assets.files, file)
+                    end
+                end
+                @debug "total asset count" previous current = length(assets.files)
+            end
+        end
+
+        # Finally, clean up the sessions themselves.
         for connection in remove
             session = connection.session
             if !isnothing(session)
