@@ -35,7 +35,7 @@ end
 #
 
 """
-    response(mime, object; attachment = false, filename = nothing)
+    response(mime, object; headers = nothing, attachment = false, filename = nothing)
 
 Construct a response object from `object` in the provided `mime` type and set
 the `Content-Disposition` based on `filename` and `attachment`. Will
@@ -46,10 +46,14 @@ When `object` is a `String` or `Vector{UInt8}` then no transformation is
 applied to the `object` and it is instead used directly in the `Response`
 object. Any other type is first rendered using `show(io, mime, object)` to
 create the correct mime type output.
+
+Additional response headers can be passed in the `headers` keyword. Any
+iterable that returns k/v pairs can be used as the argument.
 """
 function response(
     mime::MIME{T},
     object;
+    headers = nothing,
     filename::Union{String,Nothing} = nothing,
     attachment::Bool = false,
 ) where {T}
@@ -71,6 +75,12 @@ function response(
     if attachment
         filename = isnothing(filename) ? "" : "; filename=$(repr(filename))"
         HTTP.setheader(res, "Content-Disposition" => "attachment$filename")
+    end
+
+    if !isnothing(headers)
+        for (key, value) in headers
+            HTTP.setheader(res, key => value)
+        end
     end
 
     return res
