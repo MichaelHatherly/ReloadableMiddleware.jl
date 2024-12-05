@@ -57,6 +57,13 @@ using ReloadableMiddleware.Responses
     @test only(HTTP.headers(res, "Content-Length")) == "0"
     @test only(HTTP.headers(res, "Content-Disposition")) == "attachment; filename=\"file.pdf\""
 
+    value = Responses.response("text/plain", ""; headers = ["Vary" => "*"])
+    res = handler(value)(HTTP.Request("GET", "/"))
+    @test String(res.body) == ""
+    @test only(HTTP.headers(res, "Content-Type")) == "text/plain; charset=utf-8"
+    @test only(HTTP.headers(res, "Content-Length")) == "0"
+    @test only(HTTP.headers(res, "Vary")) == "*"
+
     struct Custom
         value::String
     end
