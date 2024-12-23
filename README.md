@@ -142,6 +142,45 @@ end
 end
 ```
 
+#### Scoped Routes
+
+The `@prefix` and `@middleware` macros allow for defining "scoped" routes. This
+provides a way to group a set of routes under a common path prefix and a scoped
+set of middleware that should be applied in addition to the `Server`-level
+middleware.
+
+These macros work on the module-level, ie. only a single usage per-module is
+allowed and affects all routes defined within the module. Use different modules
+to separate different sets of routes, for example a `Routes.API` module to
+define a JSON API that lives under a `/api/v1` route prefix.
+
+```julia
+module Routes
+
+@GET "/" function (req)
+    # The actual `/` handler.
+end
+
+module API
+
+@prefix "/api/v1"
+
+@middleware function (handler)
+    function (req)
+        # Run custom middleware code here. Only # runs for routes under `/api/v1`.
+        return handler(req)
+    end
+end
+
+@GET "/" function (req)
+    # Handles `/api/v1`, not `/`.
+end
+
+end
+
+end
+```
+
 ### `Responses`
 
 This module is responsible for serializing returned values from route handlers

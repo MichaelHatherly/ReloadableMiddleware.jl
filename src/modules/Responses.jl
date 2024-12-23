@@ -15,6 +15,14 @@ export response
 export sse
 
 #
+# Types:
+#
+
+struct NoConvert{T}
+    value::T
+end
+
+#
 # Response middleware:
 #
 
@@ -27,7 +35,14 @@ end
 function _response_middleware(handler, request)
     result = handler(request)
     handle_response!(request, result)
+    return _return_response(request, result)
+end
+
+function _return_response(request, result)
     return request.response
+end
+function _return_response(request, result::NoConvert)
+    return result
 end
 
 #
@@ -115,6 +130,10 @@ _charset(::MIME"text/plain") = "; charset=utf-8"
 #
 # Response handlers:
 #
+
+function handle_response!(req::HTTP.Request, res::NoConvert)
+    return res
+end
 
 function handle_response!(req::HTTP.Request, res::HTTP.Response)
     req.response = res

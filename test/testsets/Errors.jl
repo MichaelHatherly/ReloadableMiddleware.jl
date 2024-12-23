@@ -10,9 +10,10 @@ import HTTP
     middleware = Errors.error_reporting_middleware("/errors/"; errors_storage)(identity)
 
     res = middleware(HTTP.Request("GET", "/errors/"))
-    @test isa(res, String)
-    @test startswith(res, "<!DOCTYPE html>")
-    @test contains(res, "Server Error")
+    @test isa(res, HTTP.Response)
+    body = String(res.body)
+    @test startswith(body, "<!DOCTYPE html>")
+    @test contains(body, "Server Error")
 
     error, st = try
         div(1, 0)
@@ -27,7 +28,8 @@ import HTTP
     req.context[:template_lookup] = "/template-lookup"
 
     res = middleware(req)
-    @test startswith(res, "<!DOCTYPE html>")
-    @test contains(res, "Server Error")
-    @test contains(res, "DivideError")
+    body = String(res.body)
+    @test startswith(body, "<!DOCTYPE html>")
+    @test contains(body, "Server Error")
+    @test contains(body, "DivideError")
 end
