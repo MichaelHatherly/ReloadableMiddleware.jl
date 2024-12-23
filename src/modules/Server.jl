@@ -141,7 +141,6 @@ function dev(;
         HypertextTemplates.TemplateFileLookup,
         Errors.error_reporting_middleware(errors),
         middleware...,
-        Responses.response_middleware,
         Docs.middleware(router_modules, docs),
         router,
     ]
@@ -167,7 +166,7 @@ the server is closed.
 """
 function prod(; port = 8080, router_modules = [], middleware = [], kwargs...)
     router, _, _ = Router.routes(router_modules)
-    middleware = [middleware..., Responses.response_middleware, router]
+    middleware = [middleware..., router]
     handler = stream_handler(reduce(|>, reverse(middleware)))
     HTTP.serve(handler, port; access_log = logging_format(), kwargs..., stream = true)
 end

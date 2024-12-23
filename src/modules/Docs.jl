@@ -279,10 +279,13 @@ end
         end
     end
 
+    prefix_fn = Router.module_prefix(mod)
+    prefix = prefix_fn()
+
     return HypertextTemplates.@render Templates.@doc({
         data_href = "$(file):$(line)",
         docs = sprint(show, "text/html", Base.Docs.doc(request_handler)),
-        handler_path = Router.handler_path(handler_type),
+        handler_path = string(prefix, Router.handler_path(handler_type)),
         info = Router.routes_info(mods),
         method = Router.method_string(Router.handler_method(handler_type)),
         prefix = rstrip(req.context[Docs.route_key()], '/'),

@@ -10,6 +10,8 @@ import MacroTools
 import Sockets
 import StructTypes
 
+import ..Responses
+
 #
 # Exports:
 #
@@ -22,6 +24,8 @@ export @PUT
 export @STREAM
 export @WEBSOCKET
 export @route
+export @prefix
+export @middleware
 
 export File
 export RawFile
@@ -45,6 +49,72 @@ struct WEBSOCKET <: AbstractMethod end
 method_string(T::Type{<:AbstractMethod}) = String(nameof(T))
 method_string(T::Type{STREAM}) = "*"
 method_string(T::Type{WEBSOCKET}) = "*"
+
+#
+# Scoping macros:
+#
+
+const PREFIX_NAME = Symbol("##router-module-prefix##")
+
+"""
+    @prefix "/custom/prefix"
+
+Prefix all routes in the module in which this `@prefix` is defined with the
+given string.
+"""
+macro prefix(path)
+    return :($(esc(PREFIX_NAME))() = $(esc(path))::String)
+end
+
+default_prefix() = ""
+
+function module_prefix(m::Module)
+    return isdefined(m, PREFIX_NAME) ? getfield(m, PREFIX_NAME) : default_prefix
+end
+
+const MIDDLEWARE_NAME = Symbol("##router-module-middleware##")
+
+"""
+    @middleware function (handler)
+        function (req)
+            # before...
+            res = handler(req)
+            # after...
+            return res
+        end
+    end
+    @middleware [funcs...]
+
+Run the provided middleware functions for all routes in the module in which
+this `@middleware` is defined. This middleware function matches the signature
+that normal middleware functions for `HTTP.jl` use. `handler -> (req -> res)`.
+
+A "stack" of middleware functions, with the same signature as above, can be
+chained by passing an iterable of functions rather than a single function
+definition.
+"""
+macro middleware(expr::Union{Expr,Symbol})
+    return :($(esc(MIDDLEWARE_NAME))() = $(esc(expr)))
+end
+
+function default_middleware()
+    return function (handler)
+        return function (req)
+            return handler(req)
+        end
+    end
+end
+
+function module_middleware(m::Module)
+    return isdefined(m, MIDDLEWARE_NAME) ? getfield(m, MIDDLEWARE_NAME) : default_middleware
+end
+
+function _reduce_middleware(middleware)
+    return function (handler)
+        return reduce(|>, reverse(middleware); init = handler)
+    end
+end
+_reduce_middleware(func::Function) = func
 
 #
 # Route macros:
@@ -588,6 +658,16 @@ function routes(ms::Vector{Module})
     functions = []
     for m in ms
         if isdefined(m, hts)
+            # Module-specific prefix:
+            prefix_fn = module_prefix(m)
+            push!(functions, prefix_fn => _world_ages(prefix_fn))
+            prefix = prefix_fn()
+
+            # Module-specific middleware:
+            middleware_fn = module_middleware(m)
+            push!(functions, middleware_fn => _world_ages(middleware_fn))
+            middleware = _reduce_middleware(middleware_fn())
+
             ht = getfield(m, hts)
             all_names = names(m; all = true)
             for name in all_names
@@ -600,10 +680,16 @@ function routes(ms::Vector{Module})
                         # Skip it.
                     else
                         push!(functions, handler => _world_ages(handler))
-                        path = handler_path(type)
+                        path = string(prefix, handler_path(type))
                         method = handler_method(type)
-                        wrapped_handler = route_handler(method, type, handler)
-                        HTTP.register!(router, method_string(method), path, wrapped_handler)
+                        wrapped_handler =
+                            Responses.response_middleware(route_handler(method, type, handler))
+                        HTTP.register!(
+                            router,
+                            method_string(method),
+                            path,
+                            middleware(wrapped_handler),
+                        )
                     end
                 end
             end
@@ -623,6 +709,8 @@ function routes_info(ms::Vector{Module})
         if isdefined(m, hts)
             ht = getfield(m, hts)
             all_names = names(m; all = true)
+            prefix_fn = module_prefix(m)
+            prefix = prefix_fn()
             for name in all_names
                 if Base.isdeprecated(m, name)
                     # Skip it.
@@ -632,7 +720,7 @@ function routes_info(ms::Vector{Module})
                     if isnothing(handler)
                         # Skip it.
                     else
-                        path = handler_path(type)
+                        path = string(prefix, handler_path(type))
                         method = method_string(handler_method(type))
                         push!(output, (m, method, path, handler))
                     end
