@@ -10,19 +10,19 @@ using ReloadableMiddleware.Router
 using ReloadableMiddleware.Responses: NoConvert
 
 
-@GET "/" function (req)
+@GET "/" function index(req)
     NoConvert("/")
 end
 
-@GET "/path-string/{id}" function (req; path::@NamedTuple{id})
+@GET "/path-string/{id}" function path_string(req; path::@NamedTuple{id})
     return NoConvert(path.id)
 end
 
-@GET "/path-int/{id}" function (req; path::@NamedTuple{id::Int})
+@GET "/path-int/{id}" function path_int(req; path::@NamedTuple{id::Int})
     return NoConvert(path.id)
 end
 
-@GET "/query-string" function (req; query::@NamedTuple{id})
+@GET "/query-string" function query_string(req; query::@NamedTuple{id})
     return NoConvert(query.id)
 end
 
@@ -48,7 +48,7 @@ end
 
 @enum Fruit apple banana pineapple
 
-@GET "/path-enum/{fruit}" function (req; path::@NamedTuple{fruit::Fruit})
+@GET "/path-enum/{fruit}" function path_enum(req; path::@NamedTuple{fruit::Fruit})
     return NoConvert(path.fruit)
 end
 
@@ -58,6 +58,14 @@ end
 
 @POST "/body-enum" function (req; body::@NamedTuple{fruit::Fruit})
     return NoConvert(body.fruit)
+end
+
+@GET "/combined/{path}/{id}" function combined_path_and_query(
+    req;
+    path::@NamedTuple{path::Int, id::Base.UUID},
+    query::@NamedTuple{a::Int, b::String},
+)
+    return NoConvert((path, query))
 end
 
 @PATCH "/patch" function (req; query::@NamedTuple{id})
@@ -115,7 +123,7 @@ end
     return reduce(|>, reverse((middleware_1, middleware_2)); init = handler)
 end
 
-@GET "/{id}" function (req; path::@NamedTuple{version::VersionNumber, id::Int})
+@GET "/{id}" function api_endpoint(req; path::@NamedTuple{version::VersionNumber, id::Int})
     return NoConvert((version = path.version, id = path.id, stack = req.context[:stack]))
 end
 
@@ -231,4 +239,32 @@ end
         id = 2,
         stack = Any[(1, :before), (2, :before), (2, :after), (1, :after)],
     )
+
+    @testset "URL builder" begin
+        @test Routes.index() == "/"
+        @test_throws ReloadableMiddleware.Router.TypeConversionError Routes.index(;
+            path = (; id = 1),
+            query = (a = "1"),
+        ) == "/"
+
+        @test Routes.query_string(; query = (; id = "1")) == "/query-string?id=1"
+        @test Routes.query_string(; query = (; id = "&")) == "/query-string?id=%26"
+
+        @test Routes.path_string(; path = (; id = "1")) == "/path-string/1"
+        @test Routes.path_int(; path = (; id = 1)) == "/path-int/1"
+        @test_throws ReloadableMiddleware.Router.TypeConversionError Routes.path_int(;
+            path = (; id = "x"),
+        ) == "/path-int/x"
+        @test Routes.path_enum(; path = (; fruit = Routes.apple)) == "/path-enum/apple"
+
+        @test Routes.API.api_endpoint(; path = (; version = v"1", id = 1)) == "/api/1.0.0/1"
+        @test_throws ReloadableMiddleware.Router.TypeConversionError Routes.API.api_endpoint(;
+            path = (; version = :foo, id = "bar"),
+        ) == "/api/foo/bar"
+
+        @test Routes.combined_path_and_query(;
+            path = (; path = 1, id = 0),
+            query = (; a = 1, b = "2"),
+        ) == "/combined/1/00000000-0000-0000-0000-000000000000?a=1&b=2"
+    end
 end

@@ -4,6 +4,7 @@ import ..Router
 import ..Responses
 
 import HTTP
+import URIs
 
 #
 # Utilities:
@@ -67,6 +68,7 @@ module Templates
 import ..Resources
 
 import HTTP
+import URIs
 
 using HypertextTemplates
 using HypertextTemplates.Elements
@@ -118,7 +120,7 @@ end
                 @table begin
                     @tbody begin
                         for (mod, method, path, handler) in info
-                            name = HTTP.URIs.escapeuri(nameof(handler))
+                            name = URIs.escapeuri(nameof(handler))
                             @tr {class = "m-2"} begin
                                 @td @code {
                                     class = "p-1 bg-gray-200 text-xs font-bold rounded border",
@@ -240,6 +242,7 @@ using BundledWebResources
 
 import HTTP
 import HypertextTemplates
+import URIs
 
 @GET "/" function (req::HTTP.Request)
     mods = req.context[Docs.mods_key()]
@@ -263,8 +266,8 @@ end
     end
     isnothing(mod) && error("could not find correct module.")
 
-    request_handler = getfield(mod, Symbol(HTTP.URIs.unescapeuri(path.handler)))
-    file, line = functionloc(request_handler)
+    request_handler = getfield(mod, Symbol(URIs.unescapeuri(path.handler)))
+    file, line = first(sort(functionloc.(methods(request_handler)); by = last))
     handler_type = getfield(mod, Router.handler_type()){nameof(request_handler)}()
 
     types = String[]
@@ -327,7 +330,7 @@ function docs_handler(
     route::String,
     mods::Vector{Module},
 )
-    uri = HTTP.URIs.URI(request.target)
+    uri = URIs.URI(request.target)
     if startswith(uri.path, route)
         original_target = request.target
         _, rest = split(request.target, route; limit = 2)

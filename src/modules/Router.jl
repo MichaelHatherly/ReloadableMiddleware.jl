@@ -5,10 +5,12 @@ module Router
 #
 
 import HTTP
+import HypertextTemplates
 import JSON3
 import MacroTools
 import Sockets
 import StructTypes
+import URIs
 
 import ..Responses
 
@@ -63,7 +65,54 @@ Prefix all routes in the module in which this `@prefix` is defined with the
 given string.
 """
 macro prefix(path)
-    return :($(esc(PREFIX_NAME))() = $(esc(path))::String)
+    join_expr = _prefix_interp(path, :kws)
+    return quote
+        $(esc(PREFIX_NAME))() = $(esc(path))::String
+        $(esc(PREFIX_NAME))(kws) = $(join_expr)::String
+    end
+end
+
+# Macro-time prefix parsing:
+function _prefix_interp(path::String, kws)
+    if isempty(path)
+        return path
+    else
+        parts = map(eachsplit(path, '/'; keepempty = false)) do segment
+            m = match(r"^{(.+)}$", segment)
+            if isnothing(m)
+                return segment
+            else
+                return :($(kws).$(Symbol(m[1])))
+            end
+        end
+        if all(x -> isa(x, AbstractString), parts)
+            return join(("", parts...), '/')
+            # TODO: implement partial evaluation.
+        else
+            return :(join($(Expr(:tuple, "", parts...)), '/'))
+        end
+    end
+end
+_prefix_interp(path, kws) = :($(__prefix_interp)($(path), kws))
+
+# Runtime prefix parsing:
+function __prefix_interp(path, kws)
+    if isempty(path)
+        return path
+    else
+        buffer = IOBuffer()
+        iter = Iterators.map(eachsplit(path, '/'; keepempty = false)) do segment
+            m = match(r"^{(.+)}$", segment)
+            if isnothing(m)
+                return segment
+            else
+                return getproperty(kws, Symbol(m[1]))
+            end
+        end
+        write(buffer, '/')
+        join(buffer, iter, '/')
+        return String(take!(buffer))
+    end
 end
 
 default_prefix() = ""
@@ -121,7 +170,7 @@ _reduce_middleware(func::Function) = func
 #
 
 """
-    @route METHOD path function (request | stream; [path], [query], [body])
+    @route METHOD path function [name](request | stream; [path], [query], [body])
         # ...
         return response
     end
@@ -129,11 +178,17 @@ _reduce_middleware(func::Function) = func
 `path` must be a valid `HTTP.register!` path, since that is what is used
 internally to register routes.
 
-`handler` is an unnamed function taking one positional argument, the
+`handler` is a named (or unnamed) function taking one positional argument, the
 `HTTP.Request`, or `HTTP.Stream` for `@STREAM` and `@WEBSOCKET`. Three optional
 keyword arguments are available for use. They are `path`, `query`, and `body`.
 They must be type annotated with a concrete type that the request should be
 deserialized into.
+
+If a named function is provided then a validated path builder is defined for
+this route that will construct the string representing a valid route that this
+handler responds to. This builder takes two optional keyword arguments, `path`,
+and `query`. Those are interpolated into the resulting path in the expected
+locations.
 """
 macro route(method, path, handler)
     method_type = getfield(@__MODULE__, Symbol(method))
@@ -142,7 +197,7 @@ macro route(method, path, handler)
 end
 
 """
-    @DELETE path function (request::HTTP.Request; [path], [query])
+    @DELETE path function [name](request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -156,7 +211,7 @@ macro DELETE(path, handler)
 end
 
 """
-    @GET path function (request::HTTP.Request; [path], [query])
+    @GET path function [name](request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -170,7 +225,7 @@ macro GET(path, handler)
 end
 
 """
-    @PATCH path function (request::HTTP.Request; [path], [query])
+    @PATCH path function [name](request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -184,7 +239,7 @@ macro PATCH(path, handler)
 end
 
 """
-    @POST path function (request::HTTP.Request; [path], [query], [body])
+    @POST path function [name](request::HTTP.Request; [path], [query], [body])
         # ...
         return response
     end
@@ -198,7 +253,7 @@ macro POST(path, handler)
 end
 
 """
-    @PUT path function (request::HTTP.Request; [path], [query])
+    @PUT path function [name](request::HTTP.Request; [path], [query])
         # ...
         return response
     end
@@ -212,7 +267,7 @@ macro PUT(path, handler)
 end
 
 """
-    @STREAM path function (stream::HTTP.Stream; [path], [query])
+    @STREAM path function [name](stream::HTTP.Stream; [path], [query])
         # ...
         for each in iter
             # ...
@@ -236,7 +291,7 @@ macro STREAM(path, handler)
 end
 
 """
-    @WEBSOCKET path function (ws::HTTP.Websocket; [path], [query])
+    @WEBSOCKET path function [name](ws::HTTP.Websocket; [path], [query])
         # ...
         for message in ws
             # ...
@@ -268,6 +323,7 @@ abstract type Handler end
 handler_function(::Any) = nothing
 handler_method(::Any) = nothing
 handler_path(::Any) = nothing
+handler_path_builder(::Any, path_kws) = nothing
 handler_path_type(::Any) = nothing
 handler_query_type(::Any) = nothing
 handler_body_type(::Any) = nothing
@@ -277,11 +333,21 @@ handler_body_type(::Any) = nothing
 #
 
 function macrobody(__source__, __module__, method, path, handler::Expr)
-    if MacroTools.@capture(handler, function (arg_; kwargs__)
-        body__
-    end | function (arg_)
-        body__
-    end)
+    if MacroTools.@capture(
+        handler,
+        function (arg_; kwargs__)
+            body__
+        end |
+        function (arg_)
+            body__
+        end |
+        function method_name_(arg_; kwargs__)
+            body__
+        end |
+        function method_name_(arg_)
+            body__
+        end
+    )
         kwargs = isnothing(kwargs) ? [] : kwargs
 
         # We generate a 'stable' name for the anonymous function since
@@ -292,9 +358,9 @@ function macrobody(__source__, __module__, method, path, handler::Expr)
         # use of a regex pattern based on function name. Swap those characters
         # out with ones that kind of look like `*`.
         escaped_path = replace(path, "*" => "✱")
-        name = Symbol("$(nameof(method)) $(escaped_path)")
+        name = isnothing(method_name) ? Symbol("$(nameof(method)) $(escaped_path)") : method_name
         ename = esc(name)
-        handler = _name_anon_func(handler, name)
+        handler = isnothing(method_name) ? _name_anon_func(handler, name) : handler
 
         eqname = esc(QuoteNode(name))
 
@@ -313,6 +379,8 @@ function macrobody(__source__, __module__, method, path, handler::Expr)
         # namedtuple that we manually unpack to avoid this.
         handler = _swap_kws_for_nt_arg(handler, parsed_keywords)
 
+        path_builder = _prefix_interp(path, :path_kws)
+
         mod = @__MODULE__
         quote
             # This helps avoid Revise issues if you happen to duplicate route
@@ -330,6 +398,21 @@ function macrobody(__source__, __module__, method, path, handler::Expr)
             # appearing below with the handler function's auto-generated name.
             isdefined($(__module__), $(esc(QuoteNode(handler_type())))) || struct $(ehandler){T} end
 
+            # Module-local function `url` rather than one defined by
+            # `ReloadableMiddleware` to avoid type piracy, since `typeof` isn't
+            # owned by the definition site. We need at least part of the
+            # definition to be owned by the enclosing module. We do this by
+            # using the module-local `url` function, not a generic one imported
+            # from elsewhere.
+            function $(ename)(; path = (;), query = (;))
+                prefix = (
+                    $(esc(Expr(:isdefined, PREFIX_NAME))) ? $(esc(PREFIX_NAME))(path) :
+                    $(default_prefix)()
+                )::String
+                handler = $(ehandler){$(eqname)}()
+                return $(mod)._url_impl(handler, prefix, path, query)
+            end
+
             # The below method definitions store the "state" of the router,
             # without having to manually deal with global state and
             # invalidating it when Revise happens to delete a route handler.
@@ -339,6 +422,7 @@ function macrobody(__source__, __module__, method, path, handler::Expr)
             $(mod).handler_function(::$(ehandler){$(eqname)}) = $(ename)
             $(mod).handler_method(::$(ehandler){$(eqname)}) = $(method)
             $(mod).handler_path(::$(ehandler){$(eqname)}) = $(path)
+            $(mod).handler_path_builder(::$(ehandler){$(eqname)}, path_kws) = $(path_builder)
             $(mod).handler_path_type(::$(ehandler){$(eqname)}) = $(esc(parsed_keywords.path))
             $(mod).handler_query_type(::$(ehandler){$(eqname)}) = $(esc(parsed_keywords.query))
             $(mod).handler_body_type(::$(ehandler){$(eqname)}) = $(esc(parsed_keywords.body))
@@ -346,9 +430,68 @@ function macrobody(__source__, __module__, method, path, handler::Expr)
         end
     else
         error(
-            "invalid route macro use, must be an unnamed function with no keyword arguments and exactly one positional argument.",
+            "invalid route macro use, must be a function with no keyword arguments and exactly one positional argument.",
         )
     end
+end
+
+struct TypeConversionError <: Exception
+    msg::String
+    error::Union{Nothing,Exception}
+end
+
+# Simplest case: the types match exactly.
+_check_type(value::NT, ::Type{NT}) where {NT} = value
+# If they aren't exactly the same types then we use `StructTypes` to attempt
+# the conversion, which should fail if it isn't supported. This covers cases
+# where we provide `(; a = "a")` but the type was `@NamedTuple{a}` (without the
+# `::String`).
+function _check_type(value::T, ::Type{Expected}) where {T,Expected}
+    try
+        return StructTypes.constructfrom(Expected, value)
+    catch error
+        throw(TypeConversionError("failed to convert type `$T` to `$Expected`", error))
+    end
+end
+# `nothing` is the value returned when no types are provided in the route
+# definition, hence `@NamedTuple{}` passes through for `nothing`.
+_check_type(value::@NamedTuple{}, ::Nothing) = value
+# Any other type that tries to convert to `nothing` should fail.
+function _check_type(::T, ::Nothing) where {T}
+    throw(
+        TypeConversionError(
+            "unsupported type conversion from `$T`, expected `@NamedTuple{}`.",
+            nothing,
+        ),
+    )
+end
+
+function _url_impl(handler, prefix::String, path_values, query_values)
+    # Attempt to convert the path and query values into the required types
+    # according to the route handler. This can throw if it isn't convertable.
+    path_values = _check_type(path_values, handler_path_type(handler))
+    query_values = _check_type(query_values, handler_query_type(handler))
+
+    buffer = IOBuffer()
+    print(buffer, prefix)
+
+    path = handler_path_builder(handler, path_values)
+    print(buffer, path)
+
+    # Ensure a leading `/` regardless of what was provided as the path.
+    position(buffer) == 0 && write(buffer, '/')
+
+    if !isempty(query_values)
+        write(buffer, '?')
+        for (nth, (k, v)) in enumerate(pairs(query_values))
+            nth > 1 && write(buffer, '&')
+            print(buffer, k)
+            write(buffer, '=')
+            print(buffer, URIs.escapeuri(v))
+        end
+    end
+
+    return HypertextTemplates.SafeString(String(take!(buffer)))
 end
 
 function _swap_kws_for_nt_arg(handler, parsed_keywords)
@@ -437,13 +580,13 @@ end
 _path_parser(_, ::Nothing) = nothing
 
 function _query_parser(req, type)
-    queries = SymDict(HTTP.URIs.queryparams(req))
+    queries = SymDict(URIs.queryparams(req))
     return StructTypes.constructfrom(type, queries)
 end
 _query_parser(_, ::Nothing) = nothing
 
 function _body_parser(req, type)
-    body = SymDict(HTTP.URIs.queryparams(String(req.body)))
+    body = SymDict(URIs.queryparams(String(req.body)))
     return StructTypes.constructfrom(type, body)
 end
 _body_parser(_, ::Nothing) = nothing
@@ -524,7 +667,7 @@ function _file_bytes_convert(::Type{T}, contenttype::String, bytes::Vector{UInt8
         return JSON3.read(String(bytes), T; allow_inf = true)
     elseif contenttype == "application/x-www-form-urlencoded"
         content = String(bytes)
-        params = SymDict(HTTP.URIs.queryparams(content))
+        params = SymDict(URIs.queryparams(content))
         return StructTypes.constructfrom(T, params)
     else
         error("unsupported contenttype in multipart form data: $contenttype")
@@ -552,7 +695,7 @@ function _multipart_convert(::Type{T}, wrapper::MultipartWrapper) where {T}
         return JSON3.read(String(take!(wrapper.multipart.data)), T; allow_inf = true)
     elseif contenttype == "application/x-www-form-urlencoded"
         content = String(take!(wrapper.multipart.data))
-        params = SymDict(HTTP.URIs.queryparams(content))
+        params = SymDict(URIs.queryparams(content))
         return StructTypes.constructfrom(T, params)
     else
         error("unknown contenttype: $contenttype")
