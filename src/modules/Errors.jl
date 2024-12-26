@@ -12,6 +12,7 @@ import ..Router
 import Dates
 import HTTP
 import Sockets
+import URIs
 
 #
 # Exports:
@@ -43,7 +44,7 @@ function error_reporting_middleware(errors::String; errors_storage = [])
 end
 
 function _error_reporting_middleware(request, handler, errors_router, target, errors_storage)
-    uri = HTTP.URIs.URI(request.target)
+    uri = URIs.URI(request.target)
     if startswith(uri.path, target)
         original_target = request.target
         _, rest = split(request.target, target; limit = 2)

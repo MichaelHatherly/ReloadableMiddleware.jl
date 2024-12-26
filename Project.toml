@@ -14,6 +14,7 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 RelocatableFolders = "05181044-ff0b-4ac5-8273-598c1e38db00"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+URIs = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
 
 [weakdeps]
 Bonito = "824d6782-a2ef-11e9-3a09-e5662e0c26f8"
@@ -34,4 +35,5 @@ MacroTools = "0.5"
 RelocatableFolders = "1"
 Sockets = "1.10"
 StructTypes = "1"
+URIs = "1"
 julia = "1.10"

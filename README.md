@@ -181,6 +181,24 @@ end
 end
 ```
 
+#### Validated router paths
+
+You can construct valid paths to any defined route by calling the route handler
+function with no positional arguments and either/both of the `path` and `query`
+keyword arguments. If called with invalid values it will fail at runtime to
+construct the path. This only works for named route handler functions.
+
+```julia
+@GET "/users/{id}" function user_details(req; path::@NamedTuple{id::Int})
+    # ...
+end
+
+# ...
+
+user_details(; path = (; id = 1)) == "/users/1"
+user_details(; path = (; id = "id")) # Throws an error.
+```
+
 ### `Responses`
 
 This module is responsible for serializing returned values from route handlers
