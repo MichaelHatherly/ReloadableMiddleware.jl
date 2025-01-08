@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Moved documentation from `README.md` to a Documenter.jl build [#41]
+
 ## [v2.4.0] - 204-12-26
 
 ### Added
