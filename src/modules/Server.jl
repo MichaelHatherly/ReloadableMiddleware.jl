@@ -30,8 +30,8 @@ export prod
 
 # From Oxygen.jl.
 function decorate_request(; ip, stream)
-    function (handle)
-        function (request::HTTP.Request)
+    return function (handle)
+        return function (request::HTTP.Request)
             request.context[:ip] = ip
             request.context[:stream] = stream
             return handle(request)
@@ -40,7 +40,7 @@ function decorate_request(; ip, stream)
 end
 
 function stream_handler(middleware)
-    function (stream)
+    return function (stream)
         ip, _ = Sockets.getpeername(stream)
         handle_stream = HTTP.streamhandler(middleware |> decorate_request(; ip, stream))
         try
@@ -64,7 +64,7 @@ end
 _intercept_epipe_error(error) = rethrow(error)
 
 function filter_changes(includes)
-    function (changes)
+    return function (changes)
         changes = filter(changes) do change
             _, ext = splitext(change.path)
             return ext in includes
@@ -84,7 +84,7 @@ function Base.show(io::IO, dev::DevServer)
     println(io, "$DevServer(")
     println(io, "  url = $url,")
     println(io, "  docs = $(url)$(dev.docs),")
-    print(io, ")")
+    return print(io, ")")
 end
 
 function Base.close(server::DevServer)
@@ -126,13 +126,13 @@ Source links will navigate your editor to the specific file and line of the
 stacktrace.
 """
 function dev(;
-    router_modules = [],
-    middleware = [],
-    watch_file_types = (".jl",),
-    docs = "/docs/",
-    errors = "/errors/",
-    kwargs...,
-)
+        router_modules = [],
+        middleware = [],
+        watch_file_types = (".jl",),
+        docs = "/docs/",
+        errors = "/errors/",
+        kwargs...,
+    )
     router = Router.router_reloader_middleware(vcat(router_modules))
     reloader = Reloader.ReloaderMiddleware(filter_changes(watch_file_types))
     middleware = [
@@ -168,7 +168,7 @@ function prod(; port = 8080, router_modules = [], middleware = [], kwargs...)
     router, _, _ = Router.routes(router_modules)
     middleware = [middleware..., router]
     handler = stream_handler(reduce(|>, reverse(middleware)))
-    HTTP.serve(handler, port; access_log = logging_format(), kwargs..., stream = true)
+    return HTTP.serve(handler, port; access_log = logging_format(), kwargs..., stream = true)
 end
 
 end

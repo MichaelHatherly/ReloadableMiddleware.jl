@@ -43,8 +43,8 @@ are removed from the directory structure then watching is stopped on them.
 
 Stop watching by calling `close` on the `FolderWatcher` object.
 """
-struct FolderWatcher{F<:Base.Callable}
-    watchers::Dict{String,MonitorTask}
+struct FolderWatcher{F <: Base.Callable}
+    watchers::Dict{String, MonitorTask}
     callback::F
     roots::Set{String}
     start_dir::String
@@ -52,12 +52,12 @@ struct FolderWatcher{F<:Base.Callable}
     skiplist::Set{String}
 
     function FolderWatcher(
-        callback::Function = default_callback;
-        roots::Vector{String} = ["."],
-        start_dir::AbstractString = pwd(),
-        delay::Real = 0.1,
-        skiplist::Vector{String} = ["node_modules"],
-    )
+            callback::Function = default_callback;
+            roots::Vector{String} = ["."],
+            start_dir::AbstractString = pwd(),
+            delay::Real = 0.1,
+            skiplist::Vector{String} = ["node_modules"],
+        )
         isempty(roots) && error("`roots` is an empty list.")
         isdir(start_dir) || error("`start_dir` must be a directory.")
         delay > 0 || error("`delay` keyword must be positive.")
@@ -70,7 +70,7 @@ struct FolderWatcher{F<:Base.Callable}
 
         function f(path)
             fullpath = normpath(abspath(joinpath(start_dir, path, ".")))
-            push!(folders, fullpath)
+            return push!(folders, fullpath)
         end
 
         for each in roots
@@ -83,7 +83,7 @@ struct FolderWatcher{F<:Base.Callable}
         end
 
         fw = new{typeof(callback)}(
-            Dict{String,MonitorTask}(),
+            Dict{String, MonitorTask}(),
             callback,
             roots,
             start_dir,
@@ -112,11 +112,12 @@ function default_callback(changes::Vector{Change})
     for change in sort(changes; by = x -> x.time)
         println(change.path)
     end
+    return
 end
 
 function Base.show(io::IO, fw::FolderWatcher)
     print(io, "$(FolderWatcher)(")
-    if isempty(fw.watchers)
+    return if isempty(fw.watchers)
         print(io, ")")
     else
         println(io)
@@ -131,6 +132,7 @@ function Base.close(fw::FolderWatcher)
     for monitor in values(fw.watchers)
         close(monitor)
     end
+    return
 end
 
 condition(path::String, skiplist::Set{String}) = isdir(path) && !(basename(path) in skiplist)
@@ -157,6 +159,7 @@ function start_monitor!(fw::FolderWatcher, folders)
     for folder in folders
         start_monitor!(fw, folder)
     end
+    return
 end
 
 function update(fw::FolderWatcher, path::String)
@@ -174,7 +177,7 @@ function update(fw::FolderWatcher, path::String)
             folders = Set{String}([path])
             function f(path)
                 fullpath = normpath(abspath(joinpath(path, ".")))
-                push!(folders, fullpath)
+                return push!(folders, fullpath)
             end
             walk(f, path, fw.skiplist)
 

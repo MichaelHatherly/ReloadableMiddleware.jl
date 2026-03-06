@@ -27,7 +27,7 @@ end
 #
 
 function response_middleware(handler)
-    function (request)
+    return function (request)
         return _response_middleware(handler, request)
     end
 end
@@ -66,12 +66,12 @@ Additional response headers can be passed in the `headers` keyword. Any
 iterable that returns k/v pairs can be used as the argument.
 """
 function response(
-    mime::MIME{T},
-    object;
-    headers = nothing,
-    filename::Union{String,Nothing} = nothing,
-    attachment::Bool = false,
-) where {T}
+        mime::MIME{T},
+        object;
+        headers = nothing,
+        filename::Union{String, Nothing} = nothing,
+        attachment::Bool = false,
+    ) where {T}
     charset = _charset(mime)
     content_type = "$T$charset"
 
@@ -136,7 +136,7 @@ function handle_response!(req::HTTP.Request, res::NoConvert)
 end
 
 function handle_response!(req::HTTP.Request, res::HTTP.Response)
-    req.response = res
+    return req.response = res
 end
 
 function handle_response!(req::HTTP.Request, content::AbstractString)
@@ -154,7 +154,7 @@ function handle_response!(req::HTTP.Request, text::Base.Docs.Text)
     return _build_respose!(req.response, body, "text/plain; charset=utf-8")
 end
 
-function handle_response!(req::HTTP.Request, content::Union{Number,Bool,Char,Symbol})
+function handle_response!(req::HTTP.Request, content::Union{Number, Bool, Char, Symbol})
     body = string(content)
     return _build_respose!(req.response, body, "text/plain; charset=utf-8")
 end
@@ -190,11 +190,11 @@ and `retry` are optional. When `data` is not provided then a single line
 sse(stream::HTTP.Stream, data::String = ""; kws...) = write(stream, _sse(data; kws...))
 
 function _sse(
-    data::String = "";
-    event::Union{Symbol,String,Nothing} = nothing,
-    id::Union{Symbol,String,Nothing} = nothing,
-    retry::Union{Int,Nothing} = nothing,
-)
+        data::String = "";
+        event::Union{Symbol, String, Nothing} = nothing,
+        id::Union{Symbol, String, Nothing} = nothing,
+        retry::Union{Int, Nothing} = nothing,
+    )
     _has_newlines(event) && throw(ArgumentError("`event` cannot contain newlines."))
     _has_newlines(retry) && throw(ArgumentError("`retry` cannot contain newlines."))
     _has_newlines(id) && throw(ArgumentError("`id` cannot contain newlines."))
@@ -218,6 +218,7 @@ function _write_data(io::IO, data::String)
     for line in eachsplit(data, '\n')
         write(io, "data: $line\n")
     end
+    return
 end
 
 _write_meta(io::IO, key::Symbol, value) = write(io, "$key: $value\n")

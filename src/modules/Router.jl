@@ -142,7 +142,7 @@ A "stack" of middleware functions, with the same signature as above, can be
 chained by passing an iterable of functions rather than a single function
 definition.
 """
-macro middleware(expr::Union{Expr,Symbol})
+macro middleware(expr::Union{Expr, Symbol})
     return :($(esc(MIDDLEWARE_NAME))() = $(esc(expr)))
 end
 
@@ -333,21 +333,21 @@ handler_body_type(::Any) = nothing
 #
 
 function macrobody(__source__, __module__, method, path, handler::Expr)
-    if MacroTools.@capture(
-        handler,
-        function (arg_; kwargs__)
-            body__
-        end |
-        function (arg_)
-            body__
-        end |
-        function method_name_(arg_; kwargs__)
-            body__
-        end |
-        function method_name_(arg_)
-            body__
-        end
-    )
+    return if MacroTools.@capture(
+            handler,
+            function (arg_; kwargs__)
+                body__
+            end |
+                function (arg_)
+                body__
+            end |
+                function method_name_(arg_; kwargs__)
+                body__
+            end |
+                function method_name_(arg_)
+                body__
+            end
+        )
         kwargs = isnothing(kwargs) ? [] : kwargs
 
         # We generate a 'stable' name for the anonymous function since
@@ -407,7 +407,7 @@ function macrobody(__source__, __module__, method, path, handler::Expr)
             function $(ename)(; path = (;), query = (;))
                 prefix = (
                     $(esc(Expr(:isdefined, PREFIX_NAME))) ? $(esc(PREFIX_NAME))(path) :
-                    $(default_prefix)()
+                        $(default_prefix)()
                 )::String
                 handler = $(ehandler){$(eqname)}()
                 return $(mod)._url_impl(handler, prefix, path, query)
@@ -437,7 +437,7 @@ end
 
 struct TypeConversionError <: Exception
     msg::String
-    error::Union{Nothing,Exception}
+    error::Union{Nothing, Exception}
 end
 
 # Simplest case: the types match exactly.
@@ -446,7 +446,7 @@ _check_type(value::NT, ::Type{NT}) where {NT} = value
 # the conversion, which should fail if it isn't supported. This covers cases
 # where we provide `(; a = "a")` but the type was `@NamedTuple{a}` (without the
 # `::String`).
-function _check_type(value::T, ::Type{Expected}) where {T,Expected}
+function _check_type(value::T, ::Type{Expected}) where {T, Expected}
     try
         return StructTypes.constructfrom(Expected, value)
     catch error
@@ -562,7 +562,7 @@ function _request_parser_builder(type)
     path_type = handler_path_type(type)
     query_type = handler_query_type(type)
     body_type = handler_body_type(type)
-    function _request_parser(req)
+    return function _request_parser(req)
         return (;
             path = _path_parser(req, path_type),
             query = _query_parser(req, query_type),
@@ -571,7 +571,7 @@ function _request_parser_builder(type)
     end
 end
 
-SymDict(dict) = Dict{Symbol,String}(Symbol(k) => v for (k, v) in dict)
+SymDict(dict) = Dict{Symbol, String}(Symbol(k) => v for (k, v) in dict)
 
 function _path_parser(req, type)
     params = SymDict(HTTP.getparams(req))
@@ -681,7 +681,7 @@ function Base.show(io::IO, f::File{T}) where {T}
     filename = repr(f.filename)
     size = sizeof(f.data)
     contenttype = repr(f.contenttype)
-    print(
+    return print(
         io,
         "$File(filename=$(filename), raw=$(T == Vector{UInt8}), size=$(size), contenttype=$(contenttype))",
     )
@@ -705,7 +705,7 @@ end
 _multipart_convert(::Type{File{T}}, wrapper::MultipartWrapper) where {T} =
     File(T, wrapper.multipart)
 
-function __multipart_convert(::Type{Union{Bool,Nothing}}, wrapper::MultipartWrapper)
+function __multipart_convert(::Type{Union{Bool, Nothing}}, wrapper::MultipartWrapper)
     # TODO: confirm that this is actually correct.
     value = String(take!(wrapper.multipart.data))
     return value == "on"
@@ -723,7 +723,7 @@ function _body_parser(req, ::Type{Multipart{type}}) where {type}
     startswith(content_type, "multipart/form-data") ||
         error("`Multipart` body expected, but `Content-Type` is not `multipart/form-data`.")
 
-    items = Dict{Symbol,MultipartWrapper}()
+    items = Dict{Symbol, MultipartWrapper}()
     for part in HTTP.parse_multipart_form(req)
         items[Symbol(part.name)] = MultipartWrapper(part)
     end
@@ -732,9 +732,9 @@ end
 
 # Request handler:
 
-function route_handler(::Type{METHOD}, type, user_handler) where {METHOD<:AbstractMethod}
+function route_handler(::Type{METHOD}, type, user_handler) where {METHOD <: AbstractMethod}
     request_parser = _request_parser_builder(type)
-    function request_handler(request::HTTP.Request)
+    return function request_handler(request::HTTP.Request)
         return _request_handler(request, user_handler, request_parser)
     end
 end
@@ -747,7 +747,7 @@ end
 
 function route_handler(::Type{STREAM}, type, user_handler)
     request_parser = _request_parser_builder(type)
-    function stream_handler(request::HTTP.Request)
+    return function stream_handler(request::HTTP.Request)
         return _stream_handler(request, user_handler, request_parser)
     end
 end
@@ -768,7 +768,7 @@ end
 
 function route_handler(::Type{WEBSOCKET}, type, user_handler)
     request_parser = _request_parser_builder(type)
-    function websocket_handler(request::HTTP.Request)
+    return function websocket_handler(request::HTTP.Request)
         return _websocket_handler(request, user_handler, request_parser)
     end
 end
@@ -920,7 +920,7 @@ end
 function router_reloader_middleware(router_modules)
     ref_lock = ReentrantLock()
     router_ref = Router._router_ref(router_modules)
-    function (request::HTTP.Request)
+    return function (request::HTTP.Request)
         return _router_reloader_middleware(request, router_ref, ref_lock, router_modules)
     end
 end

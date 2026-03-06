@@ -37,8 +37,8 @@ Server.dev(;
 """
 function middleware(; items...)
     ctx = NamedTuple(items)
-    function (handler)
-        function (request)
+    return function (handler)
+        return function (request)
             request.context[CONTEXT_KEY] = ctx
             return handler(request)
         end

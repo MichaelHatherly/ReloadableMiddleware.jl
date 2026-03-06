@@ -18,7 +18,7 @@ function ReloaderMiddleware(user_callback = identity; config...)
     condition = Condition()
     function callback(changes)
         changes = Base.@invokelatest user_callback(changes)
-        if isempty(changes)
+        return if isempty(changes)
             # Filtered changes contains no changes.
         else
             notify(condition)

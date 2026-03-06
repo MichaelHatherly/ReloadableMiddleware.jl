@@ -63,7 +63,7 @@ abstract type AbstractBonitoContext end
 #
 
 struct TaggedAsset
-    session_id::Union{Nothing,String}
+    session_id::Union{Nothing, String}
     asset::Bonito.AbstractAsset
 
     function TaggedAsset(asset::Bonito.AbstractAsset)
@@ -93,12 +93,12 @@ _get_asset_session_id(::Bonito.AbstractAsset) = nothing
 
 struct BonitoAssetServer <: Bonito.AbstractAssetServer
     endpoint::String
-    files::Dict{String,TaggedAsset}
+    files::Dict{String, TaggedAsset}
     lock::ReentrantLock
 
     function BonitoAssetServer(endpoint::String)
         endpoint = "$endpoint/assets/"
-        return new(endpoint, Dict{String,TaggedAsset}(), ReentrantLock())
+        return new(endpoint, Dict{String, TaggedAsset}(), ReentrantLock())
     end
 end
 
@@ -163,10 +163,10 @@ _asset_response(asset::TaggedAsset) = _asset_response(asset.asset)
 # WebSocket connection:
 #
 
-mutable struct WebSocketConnection{T<:AbstractBonitoContext} <: Bonito.FrontendConnection
+mutable struct WebSocketConnection{T <: AbstractBonitoContext} <: Bonito.FrontendConnection
     context::T
     endpoint::String
-    session::Union{Bonito.Session,Nothing}
+    session::Union{Bonito.Session, Nothing}
     handler::Bonito.WebSocketHandler
 end
 
@@ -175,18 +175,18 @@ struct BonitoContext <: AbstractBonitoContext
     endpoint::String
     cleanup_policy::Bonito.CleanupPolicy
     cleanup_timer::Timer
-    open_connections::Dict{String,WebSocketConnection{BonitoContext}}
+    open_connections::Dict{String, WebSocketConnection{BonitoContext}}
     lock::ReentrantLock
 
     function BonitoContext(
-        assets::BonitoAssetServer,
-        prefix::String;
-        cleanup_policy::Bonito.CleanupPolicy = Bonito.DefaultCleanupPolicy(),
-        cleanup_interval::Integer = 5,
-    )
+            assets::BonitoAssetServer,
+            prefix::String;
+            cleanup_policy::Bonito.CleanupPolicy = Bonito.DefaultCleanupPolicy(),
+            cleanup_interval::Integer = 5,
+        )
         endpoint = "$prefix/websocket/"
         lock = ReentrantLock()
-        open_connections = Dict{String,WebSocketConnection{BonitoContext}}()
+        open_connections = Dict{String, WebSocketConnection{BonitoContext}}()
         cleanup_timer = Timer(cleanup_interval; interval = cleanup_interval) do timer
             try
                 cleanup_bonito(lock, open_connections, cleanup_policy, assets)
@@ -214,10 +214,10 @@ function Bonito.setup_connection(session::Bonito.Session{WebSocketConnection{Bon
 end
 
 function _bonito_websocket_handler(
-    websocket::HTTP.WebSockets.WebSocket,
-    session_id::String,
-    context::BonitoContext,
-)
+        websocket::HTTP.WebSockets.WebSocket,
+        session_id::String,
+        context::BonitoContext,
+    )
     connection = lock(context.lock) do
         get(context.open_connections, session_id, nothing)
     end
@@ -277,8 +277,8 @@ function ReloadableMiddleware.Extensions._bonito_middleware(::Nothing, prefix::S
     Bonito.register_asset_server!(BonitoAssetServer) do
         return assets
     end
-    function (handler)
-        function (stream)
+    return function (handler)
+        return function (stream)
             if _is_bonito(stream, prefix)
                 return _handle_bonito_request(stream, context)
             else
@@ -316,15 +316,15 @@ end
 #
 
 function cleanup_bonito(
-    reentrant_lock::ReentrantLock,
-    open_connections::Dict{String,WebSocketConnection{BonitoContext}},
-    cleanup_policy::Bonito.CleanupPolicy,
-    assets::BonitoAssetServer,
-)
-    lock(reentrant_lock) do
+        reentrant_lock::ReentrantLock,
+        open_connections::Dict{String, WebSocketConnection{BonitoContext}},
+        cleanup_policy::Bonito.CleanupPolicy,
+        assets::BonitoAssetServer,
+    )
+    return lock(reentrant_lock) do
         # Find all current resources that have an associated session ID.
         assets_to_delete = lock(assets.lock) do
-            dict = Dict{String,Vector{String}}()
+            dict = Dict{String, Vector{String}}()
             for (k, v) in assets.files
                 if !isnothing(v.session_id)
                     push!(get!(Vector{String}, dict, v.session_id), k)

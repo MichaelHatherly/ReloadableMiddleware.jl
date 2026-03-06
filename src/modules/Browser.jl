@@ -60,23 +60,25 @@ function browser(url::AbstractString)
     end
 end
 
-const SUPPORTED_CHROMIUM_BROWSERS = Set([
-    "Google Chrome Canary",
-    "Google Chrome Dev",
-    "Google Chrome Beta",
-    "Google Chrome",
-    "Microsoft Edge",
-    "Brave Browser",
-    "Vivaldi",
-    "Chromium",
-])
+const SUPPORTED_CHROMIUM_BROWSERS = Set(
+    [
+        "Google Chrome Canary",
+        "Google Chrome Dev",
+        "Google Chrome Beta",
+        "Google Chrome",
+        "Microsoft Edge",
+        "Brave Browser",
+        "Vivaldi",
+        "Chromium",
+    ]
+)
 
 const OPEN_CHROME_SCRIPT = RelocatableFolders.@path joinpath(@__DIR__, "openChrome.applescript")
 
 const _IS_WSL =
     Sys.islinux() && let osrelease = "/proc/sys/kernel/osrelease"
-        isfile(osrelease) && occursin(r"microsoft|wsl"i, read(osrelease, String))
-    end
+    isfile(osrelease) && occursin(r"microsoft|wsl"i, read(osrelease, String))
+end
 
 function encode_uri(uri::String)
     unescaped = "-.!~*'();,/?:@&=+\$#"
