@@ -51,11 +51,8 @@ jobs:
           - "nightly"
         os:
           - ubuntu-latest
-          - macOS-13
+          - macos-latest
           - windows-latest
-        exclude:
-          - version: "1.6"
-            os: windows-latest
 
     steps:
       - uses: actions/checkout@v4
