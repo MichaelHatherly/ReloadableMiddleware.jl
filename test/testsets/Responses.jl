@@ -43,14 +43,14 @@ using ReloadableMiddleware.Responses
     @test only(HTTP.headers(res, "Content-Type")) == "text/css; charset=utf-8"
     @test only(HTTP.headers(res, "Content-Length")) == "0"
 
-    value = Responses.response("application/pdf", ""; attachment=true)
+    value = Responses.response("application/pdf", ""; attachment = true)
     res = handler(value)(HTTP.Request("GET", "/"))
     @test String(res.body) == ""
     @test only(HTTP.headers(res, "Content-Type")) == "application/pdf"
     @test only(HTTP.headers(res, "Content-Length")) == "0"
     @test only(HTTP.headers(res, "Content-Disposition")) == "attachment"
 
-    value = Responses.response("application/pdf", ""; attachment=true, filename="file.pdf")
+    value = Responses.response("application/pdf", ""; attachment = true, filename = "file.pdf")
     res = handler(value)(HTTP.Request("GET", "/"))
     @test String(res.body) == ""
     @test only(HTTP.headers(res, "Content-Type")) == "application/pdf"
@@ -77,11 +77,11 @@ using ReloadableMiddleware.Responses
 
     @test Responses._sse("content") == "data: content\n\n"
     @test Responses._sse("content\nsecond") == "data: content\ndata: second\n\n"
-    @test Responses._sse("content"; event=:event) == "data: content\nevent: event\n\n"
-    @test Responses._sse("content"; event=:event, id="1") == "data: content\nevent: event\nid: 1\n\n"
-    @test Responses._sse("content"; event=:event, id="1", retry=2) == "data: content\nevent: event\nid: 1\nretry: 2\n\n"
+    @test Responses._sse("content"; event = :event) == "data: content\nevent: event\n\n"
+    @test Responses._sse("content"; event = :event, id = "1") == "data: content\nevent: event\nid: 1\n\n"
+    @test Responses._sse("content"; event = :event, id = "1", retry = 2) == "data: content\nevent: event\nid: 1\nretry: 2\n\n"
     @test Responses._sse() == "data: \n\n"
 
-    @test_throws ArgumentError Responses._sse(; event="\n")
-    @test_throws ArgumentError Responses._sse(; retry=-1)
+    @test_throws ArgumentError Responses._sse(; event = "\n")
+    @test_throws ArgumentError Responses._sse(; retry = -1)
 end

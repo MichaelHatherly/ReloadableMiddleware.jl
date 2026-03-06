@@ -36,8 +36,8 @@ function error_reporting_middleware(errors::String; errors_storage = [])
     startswith(errors, "/") || error("errors route must start with a `/`.")
     endswith(errors, "/") || error("errors route must end with a `/`.")
     router = Router.router_reloader_middleware([Routes])
-    function (handler)
-        function (request)
+    return function (handler)
+        return function (request)
             return _error_reporting_middleware(request, handler, router, errors, errors_storage)
         end
     end
@@ -69,44 +69,45 @@ end
 
 module Templates
 
-import ..Errors
+    import ..Errors
 
-using HypertextTemplates
-using HypertextTemplates.Elements
+    using HypertextTemplates
+    using HypertextTemplates.Elements
 
-@component function error_page(; error, backtrace, template_lookup)
-    @html begin
-        @head begin
-            @title "Server Error"
-            @meta {charset = "UTF-8"}
-            @meta {name = "viewport", content = "width=device-width, initial-scale=1.0"}
-            @script {src = "https://cdn.tailwindcss.com"}
-        end
-        @body {class = ""} begin
-            @pre {
-                class = "border rounded border-red-600 bg-gray-100/50 p-2 m-1 text-xs overflow-x-auto",
-            } begin
-                @code @text error
+    @component function error_page(; error, backtrace, template_lookup)
+        @html begin
+            @head begin
+                @title "Server Error"
+                @meta {charset = "UTF-8"}
+                @meta {name = "viewport", content = "width=device-width, initial-scale=1.0"}
+                @script {src = "https://cdn.tailwindcss.com"}
             end
-            for (section_name, section) in backtrace
-                @div {class = "text-xs m-1"} begin
-                    for (nth, (group_name, group)) in enumerate(section)
-                        @details {class = "p-1", open = nth < 3} begin
-                            @summary @code {
-                                class = "cursor-pointer font-bold p-1 hover:text-gray-800",
-                            } @text group_name
-                            @ol {class = "p-1"} begin
-                                for frame in group
-                                    @li {class = "px-1 py-2"} begin
-                                        @p begin
-                                            @code {class = "bg-gray-200 p-1 rounded"} @text frame.func
-                                            @text " "
-                                            @a {
-                                                href = "#",
-                                                "data-href" := "$(frame.source_file):$(frame.line_number)",
-                                                class = "text-blue-700 hover:underline",
-                                            } begin
-                                                @text Errors.rewrite_path(frame.source_file) ":$(frame.line_number)"
+            @body {class = ""} begin
+                @pre {
+                    class = "border rounded border-red-600 bg-gray-100/50 p-2 m-1 text-xs overflow-x-auto",
+                } begin
+                    @code @text error
+                end
+                for (section_name, section) in backtrace
+                    @div {class = "text-xs m-1"} begin
+                        for (nth, (group_name, group)) in enumerate(section)
+                            @details {class = "p-1", open = nth < 3} begin
+                                @summary @code {
+                                    class = "cursor-pointer font-bold p-1 hover:text-gray-800",
+                                } @text group_name
+                                @ol {class = "p-1"} begin
+                                    for frame in group
+                                        @li {class = "px-1 py-2"} begin
+                                            @p begin
+                                                @code {class = "bg-gray-200 p-1 rounded"} @text frame.func
+                                                @text " "
+                                                @a {
+                                                    href = "#",
+                                                    "data-href" := "$(frame.source_file):$(frame.line_number)",
+                                                    class = "text-blue-700 hover:underline",
+                                                } begin
+                                                    @text Errors.rewrite_path(frame.source_file) ":$(frame.line_number)"
+                                                end
                                             end
                                         end
                                     end
@@ -115,52 +116,53 @@ using HypertextTemplates.Elements
                         end
                     end
                 end
+                @script @text SafeString(
+                    """
+                    (function () {
+                        const elements = document.querySelectorAll('[data-href]');
+                        elements.forEach(element => {
+                            element.addEventListener('click', () => {
+                                const href = element.getAttribute('data-href');
+                                fetch("$template_lookup", { method: "POST", body: href });
+                            });
+                        });
+                    })();
+                    """
+                )
             end
-            @script @text SafeString("""
-            (function () {
-                const elements = document.querySelectorAll('[data-href]');
-                elements.forEach(element => {
-                    element.addEventListener('click', () => {
-                        const href = element.getAttribute('data-href');
-                        fetch("$template_lookup", { method: "POST", body: href });
-                    });
-                });
-            })();
-            """)
         end
     end
-end
-@deftag macro error_page end
+    @deftag macro error_page end
 
-@component function all_errors(; errors, prefix)
-    @html begin
-        @head begin
-            @title "Server Errors"
-            @meta {charset = "UTF-8"}
-            @meta {name = "viewport", content = "width=device-width, initial-scale=1.0"}
-            @script {src = "https://cdn.tailwindcss.com"}
-        end
-        @body {class = "m-1"} begin
-            count = length(errors)
-            for (nth, (timestamp, error, backtrace)) in enumerate(reverse(errors))
-                @div {class = ""} begin
-                    @details {class = "text-xs", open = nth == 1} begin
-                        @summary begin
-                            @em {class = "font-bold font-mono"} @text timestamp
-                            @a {
-                                class = "px-1 font-bold text-blue-600 hover:text-blue-800",
-                                href = "$prefix$(count - nth + 1)",
-                            } "view"
-                            @code {class = "p-1"} @text first(split(error, '\n'))
+    @component function all_errors(; errors, prefix)
+        @html begin
+            @head begin
+                @title "Server Errors"
+                @meta {charset = "UTF-8"}
+                @meta {name = "viewport", content = "width=device-width, initial-scale=1.0"}
+                @script {src = "https://cdn.tailwindcss.com"}
+            end
+            @body {class = "m-1"} begin
+                count = length(errors)
+                for (nth, (timestamp, error, backtrace)) in enumerate(reverse(errors))
+                    @div {class = ""} begin
+                        @details {class = "text-xs", open = nth == 1} begin
+                            @summary begin
+                                @em {class = "font-bold font-mono"} @text timestamp
+                                @a {
+                                    class = "px-1 font-bold text-blue-600 hover:text-blue-800",
+                                    href = "$prefix$(count - nth + 1)",
+                                } "view"
+                                @code {class = "p-1"} @text first(split(error, '\n'))
+                            end
+                            @pre {class = "p-2 border bg-gray-100/50"} @code @text error
                         end
-                        @pre {class = "p-2 border bg-gray-100/50"} @code @text error
                     end
                 end
             end
         end
     end
-end
-@deftag macro all_errors end
+    @deftag macro all_errors end
 
 end
 
@@ -170,26 +172,26 @@ end
 
 module Routes
 
-using ...Router
+    using ...Router
 
-import ..Templates
+    import ..Templates
 
-using HypertextTemplates
+    using HypertextTemplates
 
-import HTTP
+    import HTTP
 
-@GET "/" function (req::HTTP.Request)
-    errors_storage = req.context[:errors_storage]
-    prefix = req.context[:errors]
-    return @render Templates.@all_errors {errors = errors_storage, prefix}
-end
+    @GET "/" function (req::HTTP.Request)
+        errors_storage = req.context[:errors_storage]
+        prefix = req.context[:errors]
+        return @render Templates.@all_errors {errors = errors_storage, prefix}
+    end
 
-@GET "/{id}" function (req::HTTP.Request; path::@NamedTuple{id::Int})
-    errors_storage = req.context[:errors_storage]
-    timestamp, error, backtrace = errors_storage[path.id]
-    template_lookup = req.context[:template_lookup]
-    return @render Templates.@error_page {error, backtrace, template_lookup}
-end
+    @GET "/{id}" function (req::HTTP.Request; path::@NamedTuple{id::Int})
+        errors_storage = req.context[:errors_storage]
+        timestamp, error, backtrace = errors_storage[path.id]
+        template_lookup = req.context[:template_lookup]
+        return @render Templates.@error_page {error, backtrace, template_lookup}
+    end
 
 end
 
@@ -209,7 +211,7 @@ function _process_stacktrace(error, bt)
     toplevel = findfirst(s -> StackTraces.is_top_level_frame(s.sf), wrapped)
     toplevel = toplevel === nothing ? length(wrapped) : toplevel
     user_frames = wrapped[1:toplevel]
-    system_frames = wrapped[toplevel+1:end]
+    system_frames = wrapped[(toplevel + 1):end]
     function make_nodes(section_name, frames)
         output = []
         for (nth, frame_group) in enumerate(aggregate_modules(frames))
@@ -300,25 +302,25 @@ aggregate_modules(stacktrace) = groupby(module_of, stacktrace)
 # groupby utils, from IterTools.jl
 
 macro ifsomething(ex)
-    quote
+    return quote
         result = $(esc(ex))
         result === nothing && return nothing
         result
     end
 end
 
-struct GroupBy{I,F<:Base.Callable}
+struct GroupBy{I, F <: Base.Callable}
     keyfunc::F
     xs::I
 end
 Base.eltype(::Type{<:GroupBy{I}}) where {I} = Vector{eltype(I)}
 Base.IteratorSize(::Type{<:GroupBy}) = Base.SizeUnknown()
 
-function groupby(keyfunc::F, xs::I) where {F<:Base.Callable,I}
-    GroupBy{I,F}(keyfunc, xs)
+function groupby(keyfunc::F, xs::I) where {F <: Base.Callable, I}
+    return GroupBy{I, F}(keyfunc, xs)
 end
 
-function Base.iterate(it::GroupBy{I,F}, state = nothing) where {I,F<:Base.Callable}
+function Base.iterate(it::GroupBy{I, F}, state = nothing) where {I, F <: Base.Callable}
     if state === nothing
         prev_val, xs_state = @ifsomething iterate(it.xs)
         prev_key = it.keyfunc(prev_val)

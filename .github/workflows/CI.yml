@@ -17,13 +17,24 @@ concurrency:
 
 jobs:
   finalize:
-    needs: [test]
+    needs: [runic, test]
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
         if: |
+          needs.runic.result == 'failure' ||
+          needs.runic.result == 'skipped' ||
           needs.test.result == 'failure' ||
           needs.test.result == 'skipped'
+
+  runic:
+    name: Runic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fredrikekre/runic-action@v1
+        with:
+          version: '1'
 
   test:
     permissions:
@@ -40,11 +51,8 @@ jobs:
           - "nightly"
         os:
           - ubuntu-latest
-          - macOS-13
+          - macos-latest
           - windows-latest
-        exclude:
-          - version: "1.6"
-            os: windows-latest
 
     steps:
       - uses: actions/checkout@v4

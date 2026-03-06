@@ -12,7 +12,7 @@ Add this middleware at the very start of your server middleware stack. The
 `ReloaderMiddleware` should appear directly afterwards.
 """
 function ReviseMiddleware(handler)
-    function (req)
+    return function (req)
         # Dispatch to a separate function such that that function can be
         # revised, otherwise writing that function's logic here would result in
         # non-revisable handler code.

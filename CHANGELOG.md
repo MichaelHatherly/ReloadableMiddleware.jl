@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Moved documentation from `README.md` to a Documenter.jl build [#41]
+- Switch formatter from JuliaFormatter to Runic.jl, add CI check and `justfile` [#43]
 
 ## [v2.4.0] - 204-12-26
 
@@ -128,3 +129,5 @@ Initial release.
 [#36]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/36
 [#37]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/37
 [#38]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/38
+[#41]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/41
+[#43]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/43
