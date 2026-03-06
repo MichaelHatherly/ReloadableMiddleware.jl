@@ -86,6 +86,14 @@ module Routes
         return NoConvert(body.multipart.file)
     end
 
+    @POST "/body-vector" function (req; body::@NamedTuple{ids::Vector{String}})
+        return NoConvert(body.ids)
+    end
+
+    @GET "/query-vector" function (req; query::@NamedTuple{ids::Vector{String}})
+        return NoConvert(query.ids)
+    end
+
     @STREAM "/stream" function (stream)
         #
     end
@@ -156,6 +164,12 @@ end
     @test router(HTTP.Request("GET", "/query-enum?fruit=banana")).value == Routes.banana
     @test router(HTTP.Request("POST", "/body-enum", [urlencoded], "fruit=pineapple")).value ==
         Routes.pineapple
+
+    @test router(HTTP.Request("POST", "/body-vector", [urlencoded], "ids=a&ids=b&ids=c")).value ==
+        ["a", "b", "c"]
+    @test router(HTTP.Request("POST", "/body-vector", [urlencoded], "ids=a")).value == ["a"]
+    @test router(HTTP.Request("GET", "/query-vector?ids=a&ids=b")).value == ["a", "b"]
+    @test router(HTTP.Request("GET", "/query-vector?ids=a")).value == ["a"]
 
     @test router(HTTP.Request("PATCH", "/patch?id=1")).value == "1"
     @test router(HTTP.Request("DELETE", "/delete?id=1")).value == "1"

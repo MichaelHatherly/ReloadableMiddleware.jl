@@ -573,6 +573,24 @@ end
 
 SymDict(dict) = Dict{Symbol, String}(Symbol(k) => v for (k, v) in dict)
 
+function _parse_pairs(pairs, type)
+    result = Dict{Symbol, Any}()
+    for (k, v) in pairs
+        sym = Symbol(k)
+        if haskey(result, sym)
+            existing = result[sym]
+            if existing isa Vector
+                push!(existing, v)
+            else
+                result[sym] = [existing, v]
+            end
+        else
+            result[sym] = fieldtype(type, sym) <: AbstractVector ? [v] : v
+        end
+    end
+    return result
+end
+
 function _path_parser(req, type)
     params = SymDict(HTTP.getparams(req))
     return StructTypes.constructfrom(type, params)
@@ -580,13 +598,13 @@ end
 _path_parser(_, ::Nothing) = nothing
 
 function _query_parser(req, type)
-    queries = SymDict(URIs.queryparams(req))
+    queries = _parse_pairs(URIs.queryparampairs(URIs.URI(req.target).query), type)
     return StructTypes.constructfrom(type, queries)
 end
 _query_parser(_, ::Nothing) = nothing
 
 function _body_parser(req, type)
-    body = SymDict(URIs.queryparams(String(req.body)))
+    body = _parse_pairs(URIs.queryparampairs(String(req.body)), type)
     return StructTypes.constructfrom(type, body)
 end
 _body_parser(_, ::Nothing) = nothing
@@ -667,7 +685,7 @@ function _file_bytes_convert(::Type{T}, contenttype::String, bytes::Vector{UInt8
         return JSON3.read(String(bytes), T; allow_inf = true)
     elseif contenttype == "application/x-www-form-urlencoded"
         content = String(bytes)
-        params = SymDict(URIs.queryparams(content))
+        params = _parse_pairs(URIs.queryparampairs(content), T)
         return StructTypes.constructfrom(T, params)
     else
         error("unsupported contenttype in multipart form data: $contenttype")
@@ -695,7 +713,7 @@ function _multipart_convert(::Type{T}, wrapper::MultipartWrapper) where {T}
         return JSON3.read(String(take!(wrapper.multipart.data)), T; allow_inf = true)
     elseif contenttype == "application/x-www-form-urlencoded"
         content = String(take!(wrapper.multipart.data))
-        params = SymDict(URIs.queryparams(content))
+        params = _parse_pairs(URIs.queryparampairs(content), T)
         return StructTypes.constructfrom(T, params)
     else
         error("unknown contenttype: $contenttype")
