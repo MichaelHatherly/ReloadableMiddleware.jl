@@ -198,6 +198,7 @@ struct BonitoContext <: AbstractBonitoContext
 end
 
 Base.isopen(ws::WebSocketConnection{BonitoContext}) = Base.isopen(ws.handler)
+Base.write(ws::WebSocketConnection{BonitoContext}, sm::Bonito.SerializedMessage) = Base.write(ws.handler, Bonito.serialize_binary(sm))
 Base.write(ws::WebSocketConnection{BonitoContext}, binary) = Base.write(ws.handler, binary)
 Base.close(ws::WebSocketConnection{BonitoContext}) = Base.close(ws.handler)
 
