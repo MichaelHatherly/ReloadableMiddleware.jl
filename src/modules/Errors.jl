@@ -232,7 +232,7 @@ function _process_stacktrace(error, bt)
                     if !StackTraces.is_top_level_frame(frame.sf)
                         file_name = frame.sf.file
                         line_number = frame.sf.line
-                        source_file = find_source(file_name)
+                        source_file = resolve_source_file(file_name)
                         func =
                             Base.isidentifier(frame.sf.func) ? String(frame.sf.func) :
                             "var\"$(frame.sf.func)\""
@@ -254,6 +254,8 @@ function find_source(file)
     file = replace(string(file), normpath(Sys.BUILD_STDLIB_PATH) => Sys.STDLIB; count = 1)
     return Base.find_source_file(file)
 end
+
+resolve_source_file(file) = something(find_source(file), string(file))
 
 function rewrite_path(path)
     fn(path, replacer) = replace(String(path), replacer; count = 1)
