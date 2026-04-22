@@ -77,17 +77,16 @@ end
 # during the cleanup timer function. Doing it once at creation time rather than
 # later on appears to be cheaper.
 function _get_asset_session_id(asset::Bonito.BinaryAsset)
-    sm = Bonito.SerializedMessage(asset.data)
-    parts = Bonito.deserialize(sm)
-    info = get(parts, 1, nothing)
-    if isnothing(info)
-        @debug "empty message parts" asset
-        return nothing
-    else
-        data = Bonito.MsgPack.unpack(info.data)
-        session_id = get(data, 1, nothing)
-        return isa(session_id, AbstractString) ? session_id : nothing
+    try
+        ext = Bonito.MsgPack.unpack(asset.data)
+        if ext isa Bonito.MsgPack.Extension
+            parts = Bonito.MsgPack.unpack(ext.data)
+            session_id = get(parts, 1, nothing)
+            return isa(session_id, AbstractString) ? session_id : nothing
+        end
+    catch
     end
+    return nothing
 end
 _get_asset_session_id(::Bonito.AbstractAsset) = nothing
 
