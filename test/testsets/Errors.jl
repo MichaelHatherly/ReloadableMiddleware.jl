@@ -32,4 +32,16 @@ import HTTP
     @test startswith(body, "<!DOCTYPE html>")
     @test contains(body, "Server Error")
     @test contains(body, "DivideError")
+
+    @testset "unresolvable source file" begin
+        fake_path = "reloadable-middleware-nonexistent-$(rand(UInt32)).jl"
+        @test Errors.find_source(fake_path) === nothing
+        @test Errors.resolve_source_file(fake_path) == fake_path
+        @test Errors.resolve_source_file(Symbol(fake_path)) == fake_path
+
+        # Sanity: a file that does resolve is returned verbatim by `find_source`.
+        real_path = @__FILE__
+        @test Errors.find_source(real_path) == real_path
+        @test Errors.resolve_source_file(real_path) == real_path
+    end
 end

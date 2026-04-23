@@ -98,7 +98,7 @@ server_url(http_server) = "http://$(http_server.listener.hostname):$(http_server
 logging_format() = HTTP.logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
 
 """
-    dev(; router_modules, middleware, watch_file_types, docs, errors, kwargs...)
+    dev(; port = 8080, router_modules, middleware, watch_file_types, docs, errors, kwargs...)
 
 Start up a development server. Code revision via `Revise` integration is
 enabled if that package is loaded. The provided router modules reflect changes
@@ -126,6 +126,7 @@ Source links will navigate your editor to the specific file and line of the
 stacktrace.
 """
 function dev(;
+        port = 8080,
         router_modules = [],
         middleware = [],
         watch_file_types = (".jl",),
@@ -146,7 +147,7 @@ function dev(;
     ]
     handler = stream_handler(reduce(|>, reverse(middleware)))
 
-    http_server = HTTP.serve!(handler; access_log = logging_format(), kwargs..., stream = true)
+    http_server = HTTP.serve!(handler, port; access_log = logging_format(), kwargs..., stream = true)
 
     # Once the server is running check that the route works, and then open the
     # browser at that URL.

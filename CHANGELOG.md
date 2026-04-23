@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Support `Vector{T}` fields in urlencoded body and query parsing for repeated keys [#44]
+
+### Fixed
+
+- Pass `port` kwarg to `HTTP.serve!` in `dev()` to match `prod()` behavior [#44]
+
 ### Changed
 
 - Moved documentation from `README.md` to a Documenter.jl build [#41]
@@ -131,3 +139,4 @@ Initial release.
 [#38]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/38
 [#41]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/41
 [#43]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/43
+[#44]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/44

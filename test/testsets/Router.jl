@@ -86,6 +86,25 @@ module Routes
         return NoConvert(body.multipart.file)
     end
 
+    @POST "/body-vector" function (req; body::@NamedTuple{ids::Vector{String}})
+        return NoConvert(body.ids)
+    end
+
+    @GET "/query-vector" function (req; query::@NamedTuple{ids::Vector{String}})
+        return NoConvert(query.ids)
+    end
+
+    @POST "/body-optional" function (req; body::@NamedTuple{name::Union{Nothing, String}})
+        return NoConvert(body.name)
+    end
+
+    @POST "/body-optional-vector" function (
+            req;
+            body::@NamedTuple{tags::Union{Nothing, Vector{String}}},
+        )
+        return NoConvert(body.tags)
+    end
+
     @STREAM "/stream" function (stream)
         #
     end
@@ -156,6 +175,28 @@ end
     @test router(HTTP.Request("GET", "/query-enum?fruit=banana")).value == Routes.banana
     @test router(HTTP.Request("POST", "/body-enum", [urlencoded], "fruit=pineapple")).value ==
         Routes.pineapple
+
+    @test router(HTTP.Request("POST", "/body-vector", [urlencoded], "ids=a&ids=b&ids=c")).value ==
+        ["a", "b", "c"]
+    @test router(HTTP.Request("POST", "/body-vector", [urlencoded], "ids=a")).value == ["a"]
+    @test router(HTTP.Request("GET", "/query-vector?ids=a&ids=b")).value == ["a", "b"]
+    @test router(HTTP.Request("GET", "/query-vector?ids=a")).value == ["a"]
+
+    @test router(HTTP.Request("POST", "/body-optional", [urlencoded], "name=alice")).value ==
+        "alice"
+    @test router(HTTP.Request("POST", "/body-optional", [urlencoded], "name=")).value === nothing
+    @test router(HTTP.Request("POST", "/body-optional", [urlencoded], "")).value === nothing
+
+    @test router(
+        HTTP.Request("POST", "/body-optional-vector", [urlencoded], "tags=a&tags=b"),
+    ).value == ["a", "b"]
+    @test router(HTTP.Request("POST", "/body-optional-vector", [urlencoded], "tags=a")).value ==
+        ["a"]
+    @test router(HTTP.Request("POST", "/body-optional-vector", [urlencoded], "")).value === nothing
+
+    @test_throws ArgumentError router(
+        HTTP.Request("POST", "/body-string", [urlencoded], "id=1&id=2"),
+    )
 
     @test router(HTTP.Request("PATCH", "/patch?id=1")).value == "1"
     @test router(HTTP.Request("DELETE", "/delete?id=1")).value == "1"
