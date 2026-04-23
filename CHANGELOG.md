@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v2.5.0] - 2026-04-23
+
 ### Added
 
 - Support `Vector{T}` fields in urlencoded body and query parsing for repeated keys [#44]
@@ -20,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moved documentation from `README.md` to a Documenter.jl build [#41]
 - Switch formatter from JuliaFormatter to Runic.jl, add CI check and `justfile` [#43]
 
-## [v2.4.0] - 204-12-26
+## [v2.4.0] - 2024-12-26
 
 ### Added
 
@@ -120,6 +122,7 @@ Initial release.
 [v2.2.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v2.2.0
 [v2.3.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v2.3.0
 [v2.4.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v2.4.0
+[v2.5.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v2.5.0
 [#5]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/5
 [#6]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/6
 [#7]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/7
