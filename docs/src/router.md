@@ -29,7 +29,7 @@ end
 ## `path` parameters
 
 Use the same `{}` syntax as `HTTP`. Additionally include a `path` keyword that
-declares the type of each path parameter. `StructTypes` is used for the
+declares the type of each path parameter. `StructUtils` is used for the
 deserialization of these parameters.
 
 ```julia
@@ -54,7 +54,7 @@ end
 ## `query` parameters
 
 Query parameters are specified using the `query` keyword. These are urlencoded
-values, and are deserialized, like the previous examples using `StructTypes`.
+values, and are deserialized, like the previous examples using `StructUtils`.
 
 ```julia
 @GET "/search" function (req; query::@NamedTuple{q::String})
@@ -63,10 +63,10 @@ values, and are deserialized, like the previous examples using `StructTypes`.
 end
 ```
 
-## `JSON3.jl` integration
+## `JSON.jl` integration
 
-JSON data can be deserialized using the `JSON` type. Anything that the `JSON3`
-package handles can be handled with this type. `allow_inf` is set to `true` for
+JSON data can be deserialized using the `JSON` type. Anything that the `JSON`
+package handles can be handled with this type. `allownan` is set to `true` for
 deserialization.
 
 ```julia

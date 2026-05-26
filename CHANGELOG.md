@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Replace `JSON3` with `JSON` and `StructTypes` with `StructUtils` [#49]
+
 ## [v2.5.0] - 2026-04-23
 
 ### Added
@@ -143,3 +147,4 @@ Initial release.
 [#41]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/41
 [#43]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/43
 [#44]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/44
+[#49]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/49

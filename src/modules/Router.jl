@@ -6,10 +6,10 @@ module Router
 
 import HTTP
 import HypertextTemplates
-import JSON3
+import JSON as JSONLib
 import MacroTools
 import Sockets
-import StructTypes
+import StructUtils
 import URIs
 
 import ..Responses
@@ -440,15 +440,44 @@ struct TypeConversionError <: Exception
     error::Union{Nothing, Exception}
 end
 
+# `StructUtils.StructStyle` used for all router-side type construction. Path,
+# query, and urlencoded body parameters arrive as strings; this style parses
+# them into the declared numeric type. It also dispatches `MultipartWrapper`
+# sources to the multipart decoder. For non-string sources the `T(x)`
+# constructor is preferred over `convert` so things like `UUID(0)` work.
+struct RouterStyle <: StructUtils.StructStyle end
+
+# Pass-through when the source already has the target type (`Nothing` from
+# `nothing`, etc.).
+function StructUtils.lift(style::RouterStyle, ::Type{T}, x::T) where {T}
+    return x, StructUtils.defaultstate(style)
+end
+
+function StructUtils.lift(style::RouterStyle, ::Type{T}, x::AbstractString) where {T <: Real}
+    return parse(T, x), StructUtils.defaultstate(style)
+end
+
+# Other string sources fall through to the default 2-arg `lift` dispatch,
+# which already handles `UUID`, `VersionNumber`, `Date`, `Enum`, etc.
+function StructUtils.lift(style::RouterStyle, ::Type{T}, x::AbstractString) where {T}
+    return StructUtils.lift(T, x), StructUtils.defaultstate(style)
+end
+
+# Non-string sources: prefer the `T(x)` constructor over `convert` so things
+# like `UUID(0)` work.
+function StructUtils.lift(style::RouterStyle, ::Type{T}, x) where {T}
+    return T(x), StructUtils.defaultstate(style)
+end
+
 # Simplest case: the types match exactly.
 _check_type(value::NT, ::Type{NT}) where {NT} = value
-# If they aren't exactly the same types then we use `StructTypes` to attempt
+# If they aren't exactly the same types then we use `StructUtils` to attempt
 # the conversion, which should fail if it isn't supported. This covers cases
 # where we provide `(; a = "a")` but the type was `@NamedTuple{a}` (without the
 # `::String`).
 function _check_type(value::T, ::Type{Expected}) where {T, Expected}
     try
-        return StructTypes.constructfrom(Expected, value)
+        return StructUtils.make(Expected, value, RouterStyle())
     catch error
         throw(TypeConversionError("failed to convert type `$T` to `$Expected`", error))
     end
@@ -574,12 +603,12 @@ end
 SymDict(dict) = Dict{Symbol, String}(Symbol(k) => v for (k, v) in dict)
 
 _convert_field(::Type{T}, values::Vector{String}) where {T <: AbstractVector} =
-    StructTypes.constructfrom(T, values)
+    StructUtils.make(T, values, RouterStyle())
 _convert_field(::Type{Union{Nothing, T}}, values::Vector{String}) where {T <: AbstractVector} =
-    StructTypes.constructfrom(T, values)
+    StructUtils.make(T, values, RouterStyle())
 _convert_field(::Type{Union{Nothing, T}}, values::Vector{String}) where {T} =
 let v = only(values)
-    isempty(v) ? nothing : StructTypes.constructfrom(T, v)
+    isempty(v) ? nothing : StructUtils.make(T, v, RouterStyle())
 end
 _convert_field(::Type, values::Vector{String}) =
     only(values)
@@ -593,12 +622,12 @@ function _constructfrom_pairs(pairs, ::Type{T}) where {T}
         sym => _convert_field(fieldtype(T, sym), values)
             for (sym, values) in grouped
     )
-    return StructTypes.constructfrom(T, result)
+    return StructUtils.make(T, result, RouterStyle())
 end
 
 function _path_parser(req, type)
     params = SymDict(HTTP.getparams(req))
-    return StructTypes.constructfrom(type, params)
+    return StructUtils.make(type, params, RouterStyle())
 end
 _path_parser(_, ::Nothing) = nothing
 
@@ -618,8 +647,8 @@ _body_parser(_, ::Nothing) = nothing
     JSON{T}
 
 Mark a `body` keyword in a route handler as being JSON data that should be
-deserialized into type `T` using the `JSON3` package. Within the route handler
-access the JSON values via `body.json`. `alllow_inf` is set to `true`.
+deserialized into type `T` using the `JSON` package. Within the route handler
+access the JSON values via `body.json`. `allownan` is set to `true`.
 """
 struct JSON{T}
     json::T
@@ -628,8 +657,8 @@ end
 function _body_parser(req, ::Type{JSON{type}}) where {type}
     HTTP.headercontains(req, "Content-Type", "application/json") ||
         error("`JSON` body expected, but `Content-Type` is not `application/json`.")
-    # TODO: maybe don't set `allow_inf`, allow it to be customizable.
-    return JSON{type}(JSON3.read(req.body, type; allow_inf = true))
+    # TODO: maybe don't set `allownan`, allow it to be customizable.
+    return JSON{type}(JSONLib.parse(req.body, type; allownan = true))
 end
 
 # Multipart form data:
@@ -685,7 +714,7 @@ end
 _file_bytes_convert(::Type{String}, ::String, bytes::Vector{UInt8}) = String(bytes)
 function _file_bytes_convert(::Type{T}, contenttype::String, bytes::Vector{UInt8}) where {T}
     if contenttype == "application/json"
-        return JSON3.read(String(bytes), T; allow_inf = true)
+        return JSONLib.parse(bytes, T; allownan = true)
     elseif contenttype == "application/x-www-form-urlencoded"
         return _constructfrom_pairs(URIs.queryparampairs(String(bytes)), T)
     else
@@ -711,7 +740,7 @@ function _multipart_convert(::Type{T}, wrapper::MultipartWrapper) where {T}
     if contenttype == "text/plain"
         return __multipart_convert(T, wrapper)
     elseif contenttype == "application/json"
-        return JSON3.read(String(take!(wrapper.multipart.data)), T; allow_inf = true)
+        return JSONLib.parse(take!(wrapper.multipart.data), T; allownan = true)
     elseif contenttype == "application/x-www-form-urlencoded"
         return _constructfrom_pairs(URIs.queryparampairs(String(take!(wrapper.multipart.data))), T)
     else
@@ -729,11 +758,11 @@ function __multipart_convert(::Type{Union{Bool, Nothing}}, wrapper::MultipartWra
 end
 
 function __multipart_convert(::Type{T}, wrapper::MultipartWrapper) where {T}
-    return StructTypes.constructfrom(T, String(take!(wrapper.multipart.data)))
+    return StructUtils.make(T, String(take!(wrapper.multipart.data)), RouterStyle())
 end
 
-StructTypes.constructfrom(::Type{T}, wrapper::MultipartWrapper) where {T} =
-    _multipart_convert(T, wrapper)
+StructUtils.make(style::RouterStyle, ::Type{T}, wrapper::MultipartWrapper) where {T} =
+    _multipart_convert(T, wrapper), StructUtils.defaultstate(style)
 
 function _body_parser(req, ::Type{Multipart{type}}) where {type}
     content_type = HTTP.header(req, "Content-Type", "")
@@ -744,7 +773,7 @@ function _body_parser(req, ::Type{Multipart{type}}) where {type}
     for part in HTTP.parse_multipart_form(req)
         items[Symbol(part.name)] = MultipartWrapper(part)
     end
-    return Multipart{type}(StructTypes.constructfrom(type, items))
+    return Multipart{type}(StructUtils.make(type, items, RouterStyle()))
 end
 
 # Request handler:
