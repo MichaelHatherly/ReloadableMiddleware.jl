@@ -6,7 +6,7 @@ into valid `HTTP.Response`s. Any value returned from a handler is supported.
 `Base.Docs.HTML` and `Base.Docs.Text` are set to `text/html` and `text/plain`
 respectively. Simple values such as numbers, symbols, and characters are sent
 as `text/plain`. Other values are serialized as `application/json` using the
-`JSON3` package, using the `allow_inf = true` keyword.
+`JSON` package, using the `allownan = true` keyword.
 
 The module exports a `response` helper function that allows for declaring the
 intended serialization mime type, along with other options such as `attachment`

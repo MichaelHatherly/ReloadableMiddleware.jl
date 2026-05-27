@@ -5,7 +5,7 @@ module Responses
 #
 
 import HTTP
-import JSON3
+import JSON
 
 #
 # Exports:
@@ -109,7 +109,7 @@ function _response_bytes(mime::MIME, object)
 end
 function _response_bytes(::MIME"application/json", object)
     buffer = IOBuffer()
-    JSON3.write(buffer, object; allow_inf = true)
+    JSON.json(buffer, object; allownan = true)
     return take!(buffer)::Vector{UInt8}
 end
 _response_bytes(::MIME, bytes::Vector{UInt8}) = bytes
@@ -160,7 +160,7 @@ function handle_response!(req::HTTP.Request, content::Union{Number, Bool, Char, 
 end
 
 function handle_response!(req::HTTP.Request, content::Any)
-    body = JSON3.write(content; allow_inf = true)
+    body = JSON.json(content; allownan = true)
     return _build_respose!(req.response, body, "application/json; charset=utf-8")
 end
 
