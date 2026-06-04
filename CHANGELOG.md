@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Write the response in `stream_handler` only when the handler has not already
+  streamed it, so handlers writing through `request.context[:stream]` (STREAM
+  routes, SSE middleware) no longer emit a second response that desynchronizes
+  keep-alive connections [#52]
+
 ## [v3.0.0] - 2026-05-27
 
 ### Changed
@@ -151,3 +158,4 @@ Initial release.
 [#43]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/43
 [#44]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/44
 [#49]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/49
+[#52]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/52

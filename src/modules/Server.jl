@@ -42,9 +42,26 @@ end
 function stream_handler(middleware)
     return function (stream)
         ip, _ = Sockets.getpeername(stream)
-        handle_stream = HTTP.streamhandler(middleware |> decorate_request(; ip, stream))
+        handle = middleware |> decorate_request(; ip, stream)
         try
-            return handle_stream(stream)
+            request = stream.message
+            request.body = read(stream)
+            HTTP.closeread(stream)
+            response = handle(request)
+            if response isa HTTP.Response
+                request.response = response
+                request.response.request = request
+            end
+            # Handlers given stream access may write the response themselves
+            # (STREAM routes, SSE middleware). Writing it again here would
+            # emit a second response on the connection, desynchronizing every
+            # later response on it. `nwritten == -1` means nothing has been
+            # written yet.
+            if stream.nwritten == -1
+                HTTP.startwrite(stream)
+                write(stream, request.response.body)
+            end
+            return nothing
         catch error
             return _intercept_epipe_error(error)
         end
