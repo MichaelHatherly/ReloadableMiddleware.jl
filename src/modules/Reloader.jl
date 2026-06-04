@@ -75,10 +75,10 @@ function reload(stream::HTTP.Stream, condition::Condition)
                 # Can fail if the user has reloaded their browser window
                 # manually. In that case, we just ignore the error.
                 @debug "failed to send reload event" error
-            finally
-                HTTP.closewrite(stream)
-                return HTTP.Response(200, "Stream complete.")
             end
+            # Leave the write side open; the server finalizes the stream after
+            # the handler returns.
+            return HTTP.Response(200, "Stream complete.")
         else
             return HTTP.Response(500, "Stream is no longer open.")
         end

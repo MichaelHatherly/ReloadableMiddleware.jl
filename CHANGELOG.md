@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Emit exactly one HTTP response for handlers that stream their own response (server-sent events); closing the write side in `@STREAM` routes, the reloader, and `stream_handler` previously wrote a second response that desynchronized keep-alive connections [#51]
+
 ## [v3.0.0] - 2026-05-27
 
 ### Changed
@@ -151,3 +155,4 @@ Initial release.
 [#43]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/43
 [#44]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/44
 [#49]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/49
+[#51]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/51

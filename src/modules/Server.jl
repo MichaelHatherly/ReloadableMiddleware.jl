@@ -42,13 +42,32 @@ end
 function stream_handler(middleware)
     return function (stream)
         ip, _ = Sockets.getpeername(stream)
-        handle_stream = HTTP.streamhandler(middleware |> decorate_request(; ip, stream))
+        handler = middleware |> decorate_request(; ip, stream)
         try
-            return handle_stream(stream)
+            return handle_stream(handler, stream)
         catch error
             return _intercept_epipe_error(error)
         end
     end
+end
+
+# Request handlers receive stream access via `request.context` and may write
+# the response themselves (server-sent events). When that happens the write
+# side is already started and the server finalizes the message after the
+# handler returns; writing `request.response` as well would emit a second
+# response on the connection, desynchronizing every later response on it.
+# Otherwise equivalent to `HTTP.streamhandler`.
+function handle_stream(handler, stream::HTTP.Stream)
+    request = stream.message
+    request.body = read(stream)
+    HTTP.closeread(stream)
+    request.response = handler(request)
+    request.response.request = request
+    if !HTTP.iswritable(stream)
+        HTTP.startwrite(stream)
+        write(stream, request.response.body)
+    end
+    return nothing
 end
 
 # Intermittant broken pipe errors seem to show up every now and then due to
