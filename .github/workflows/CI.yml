@@ -31,8 +31,8 @@ jobs:
     name: Runic
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: fredrikekre/runic-action@v1
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: fredrikekre/runic-action@26bdc21c15f81fbd4c7605a5f94fb5a0060820a6 # v1.4.0
         with:
           version: '1'
 
@@ -55,15 +55,15 @@ jobs:
           - windows-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - uses: julia-actions/setup-julia@v3
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: ${{ matrix.version }}
 
-      - uses: julia-actions/cache@v3
+      - uses: julia-actions/cache@a45e8fa8be21c18a06b7177052533149e61e9b38 # v3.1.0
 
-      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-buildpkg@e3eb439fad4f9aba7da2667e7510e4a46ebc46e1 # v1.7.0
 
-      - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-runtest@d60b785c6f2bdf4ebfb18b2b6f7d93b7dfb0efe3 # v1.11.4
         continue-on-error: ${{ matrix.version == 'nightly' }}
