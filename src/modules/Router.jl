@@ -802,12 +802,10 @@ function _stream_handler(request::HTTP.Request, user_handler, request_parser)
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
     HTTP.setheader(stream, "Cache-Control" => "no-cache")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-    try
-        nt = request_parser(request)
-        return _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
-    finally
-        HTTP.closewrite(stream)
-    end
+    # Leave the write side open; the server finalizes the stream after the
+    # handler returns. Closing it here causes a second response to be written.
+    nt = request_parser(request)
+    return _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
 end
 
 # Websocket handler:
