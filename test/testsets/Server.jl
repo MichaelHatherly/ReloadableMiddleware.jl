@@ -98,6 +98,25 @@ end
         end
     end
 
+    # Runs `f(server, logger)` with the access log captured. The server starts
+    # under the test logger so its connection tasks inherit it.
+    function with_access_log(f, handler)
+        logger = Test.TestLogger()
+        result = Base.with_logger(logger) do
+            server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+            try
+                f(server, logger)
+            finally
+                close(server)
+            end
+        end
+        access = [log.message for log in logger.logs if log.group == :access]
+        return result, access
+    end
+
+    access_line(target, status) =
+        Regex("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2} - 127\\.0\\.0\\.1:\\d+ - \"GET $target HTTP/1\\.1\" $status\$")
+
     @testset "handler that returns a plain response" begin
         seen_ip = Ref{Any}(nothing)
         handler = function (request)
@@ -105,9 +124,20 @@ end
             return HTTP.Response(200, "plain")
         end
 
+        response, access = with_access_log(handler) do server, _
+            HTTP.get("$(Server.server_url(server))/path")
+        end
+        @test response.status == 200
+        @test String(response.body) == "plain"
+        @test seen_ip[] == Sockets.ip"127.0.0.1"
+        @test any(line -> occursin(access_line("/path", 200), line), access)
+    end
+
+    @testset "access log can be silenced" begin
+        handler = request -> HTTP.Response(200, "quiet")
         logger = Test.TestLogger()
         response = Base.with_logger(logger) do
-            server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+            server = HTTP.listen!(Server.stream_handler(handler; access_log = nothing), 0; listenany = true)
             try
                 HTTP.get("$(Server.server_url(server))/path")
             finally
@@ -115,10 +145,46 @@ end
             end
         end
         @test response.status == 200
-        @test String(response.body) == "plain"
-        @test seen_ip[] == Sockets.ip"127.0.0.1"
-        access_line = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} - 127\.0\.0\.1:\d+ - \"GET /path HTTP/1\.1\" 200$"
-        @test any(log -> log.group == :access && occursin(access_line, log.message), logger.logs)
+        @test isempty(logger.logs)
+    end
+
+    @testset "handler that throws logs a 500" begin
+        handler = request -> throw(ErrorException("boom"))
+
+        response, access = with_access_log(handler) do server, _
+            HTTP.get("$(Server.server_url(server))/path"; status_exception = false)
+        end
+        @test response.status == 500
+        @test any(line -> occursin(access_line("/path", 500), line), access)
+    end
+
+    @testset "client that disconnects mid-write logs the response status" begin
+        handler = function (request)
+            sleep(0.5)
+            return HTTP.Response(200, "x"^(64 * 1024 * 1024))
+        end
+
+        _, access = with_access_log(handler) do server, logger
+            port = HTTP.port(server)
+            sock = Sockets.connect("127.0.0.1", port)
+            raw_get(sock, port, "/path")
+            close(sock)
+            timedwait(30.0; pollint = 0.1) do
+                any(log -> log.group == :access, logger.logs)
+            end
+        end
+        @test any(line -> occursin(access_line("/path", 200), line), access)
+    end
+
+    @testset "handlers run in the latest world" begin
+        Core.eval(@__MODULE__, :(world_probe() = "before"))
+        handler = request -> HTTP.Response(200, world_probe())
+
+        response, _ = with_access_log(ReloadableMiddleware.Reviser.ReviseMiddleware(handler)) do server, _
+            Core.eval(@__MODULE__, :(world_probe() = "after"))
+            HTTP.get("$(Server.server_url(server))/path")
+        end
+        @test String(response.body) == "after"
     end
 
     @testset "STREAM route" begin

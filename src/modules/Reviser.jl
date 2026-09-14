@@ -25,18 +25,19 @@ end
 # defintion below.
 
 function revise_middleware(Revise::NamedTuple, handler, req)
-    if isempty(Revise.revision_queue)
-        return handler(req)
-    else
+    if !isempty(Revise.revision_queue)
         try
             @debug "🔨 revising code"
             Revise.revise()
         catch error
             @error "Revise failed to run." error
         end
-        Base.invokelatest(handler, req)
     end
+    return Base.invokelatest(handler, req)
 end
-revise_middleware(::Any, handler, req) = handler(req)
+# Connection tasks inherit the world age from when the server started, so
+# a method redefined since then (by Revise at the REPL prompt, or by hand)
+# is invisible to a plain call.
+revise_middleware(::Any, handler, req) = Base.invokelatest(handler, req)
 
 end

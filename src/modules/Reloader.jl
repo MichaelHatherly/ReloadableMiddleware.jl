@@ -48,10 +48,14 @@ end
 # defintion below.
 
 function reloader_middleware(handler, req, address, condition)
-    if req.method == "GET" && req.target == address
-        stream = req.context[:stream]
-        if isopen(stream)
-            return reload(stream, condition)
+    if req.target == address
+        if req.method == "OPTIONS"
+            return HTTP.Response(200; headers = ["Access-Control-Allow-Methods" => "GET, OPTIONS"])
+        elseif req.method == "GET"
+            stream = req.context[:stream]
+            if isopen(stream)
+                return reload(stream, condition)
+            end
         end
     end
     return append_reloader_script(handler(req), address)
@@ -60,33 +64,25 @@ end
 function reload(stream::HTTP.Stream, condition::Threads.Condition)
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET, OPTIONS")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
+    HTTP.setheader(stream, "Cache-Control" => "no-cache")
 
-    if stream.message.method == "OPTIONS"
-        return HTTP.Response(200)
-    else
-        HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-        HTTP.setheader(stream, "Cache-Control" => "no-cache")
-
-        lock(condition) do
-            wait(condition)
-        end
-        if isopen(stream)
-            HTTP.startwrite(stream)
-            @debug "🔄 sending reload event"
-            try
-                write(stream, "\ndata: reload\n\n")
-            catch error
-                # Can fail if the user has reloaded their browser window
-                # manually. In that case, we just ignore the error.
-                @debug "failed to send reload event" error
-            end
-            # Leave the write side open, and return no body: the server
-            # finalizes the stream after the handler returns.
-            return HTTP.Response(200)
-        else
-            return HTTP.Response(500)
-        end
+    lock(condition) do
+        wait(condition)
     end
+    isopen(stream) || return HTTP.Response(500)
+
+    HTTP.startwrite(stream)
+    @debug "🔄 sending reload event"
+    try
+        write(stream, "\ndata: reload\n\n")
+    catch error
+        # Can fail if the user has reloaded their browser window
+        # manually. In that case, we just ignore the error.
+        @debug "failed to send reload event" error
+    end
+    # Leave the write side open, and return no body: the server
+    # finalizes the stream after the handler returns.
+    return HTTP.Response(200)
 end
 
 function append_reloader_script(response::HTTP.Response, address::String)
