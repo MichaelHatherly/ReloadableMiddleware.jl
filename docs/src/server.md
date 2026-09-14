@@ -61,6 +61,13 @@ encountered while running, and allows you to navigate back to previous errors.
 The name of this route change be changed if it conflicts with your application
 by changing the `errors` keyword in the `dev` call.
 
+### Access log
+
+Both servers log one `@info` line per request in the `:access` log group,
+in the form `<timestamp> - <client> - "<request line>" <status>`. The
+`access_log` keyword of `dev` and `prod` controls it: `nothing` silences the
+log, and a function `(stream, peer, status) -> String` replaces the format.
+
 ## `prod` features
 
 The `prod` function removes all the above features of `dev`. Aside from that

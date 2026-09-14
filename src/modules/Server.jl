@@ -13,6 +13,7 @@ import ..Browser
 import ..Errors
 import ..Docs
 
+import Dates
 import HTTP
 import HypertextTemplates
 import Sockets
@@ -39,48 +40,71 @@ function decorate_request(; ip, stream)
     end
 end
 
-function stream_handler(middleware)
+"""
+    stream_handler(middleware; access_log = access_log_line)
+
+Wrap a request middleware stack as an `HTTP.Stream` handler. `access_log`
+formats one log line per request from `(stream, peer, status)`; pass
+`nothing` to log none.
+"""
+function stream_handler(middleware; access_log = access_log_line)
     return function (stream)
-        ip, _ = Sockets.getpeername(stream)
-        handler = middleware |> decorate_request(; ip, stream)
+        peer = HTTP.peeraddr(stream)
+        ip = peer_ip(peer)
+        handle_stream = HTTP.streamhandler(middleware |> decorate_request(; ip, stream))
+        # An exception that escapes makes the server answer 500 on its own,
+        # after this function returns.
+        status = 500
         try
-            return handle_stream(handler, stream)
+            handle_stream(stream)
+            status = stream.response.status
         catch error
-            return _intercept_epipe_error(error)
+            _intercept_disconnect(error)
+            status = stream.response.status
+        finally
+            log_access(access_log, stream, peer, status)
         end
+        return nothing
     end
 end
 
-# Request handlers receive stream access via `request.context` and may write
-# the response themselves (server-sent events). When that happens the write
-# side is already started and the server finalizes the message after the
-# handler returns; writing `request.response` as well would emit a second
-# response on the connection, desynchronizing every later response on it.
-# Otherwise equivalent to `HTTP.streamhandler`.
-function handle_stream(handler, stream::HTTP.Stream)
-    request = stream.message
-    request.body = read(stream)
-    HTTP.closeread(stream)
-    request.response = handler(request)
-    request.response.request = request
-    if !HTTP.iswritable(stream)
-        HTTP.startwrite(stream)
-        write(stream, request.response.body)
-    end
+peer_ip(::Nothing) = nothing
+function peer_ip(peer)
+    octets = peer.ip
+    length(octets) == 4 && return Sockets.IPv4(octets...)
+    return Sockets.IPv6(foldl((n, b) -> n << 8 | b, octets; init = UInt128(0)))
+end
+
+log_access(::Nothing, stream, peer, status) = nothing
+function log_access(format, stream, peer, status)
+    @info format(stream, peer, status) _group = :access
     return nothing
 end
 
-# Intermittant broken pipe errors seem to show up every now and then due to
-# currently unknown reasons. They appear benign so we ignore them here.
-function _intercept_epipe_error(error::Base.IOError)
-    if error.msg == "write: broken pipe (EPIPE)" && error.code == -32
-        @debug "caught 'broken pipe' error, ignoring." error
-        return nothing
-    else
-        rethrow(error)
-    end
+function access_log_line(stream, peer, status)
+    request = stream.message
+    time = Dates.format(Dates.now(), Dates.dateformat"yyyy-mm-dd\THH:MM:SS")
+    protocol = "HTTP/$(request.proto_major).$(request.proto_minor)"
+    return "$time - $peer - \"$(request.method) $(request.target) $protocol\" $status"
 end
-_intercept_epipe_error(error) = rethrow(error)
+
+# A client that disconnects while its response is still being written
+# surfaces as a failed write: EPIPE or ECONNRESET on POSIX, a Winsock code
+# on Windows. Whatever the code, nobody is left to tell.
+_is_disconnect(error::SystemError) = error.prefix == "write"
+# Reseau reports a zero-byte write as EOF.
+_is_disconnect(::EOFError) = true
+_is_disconnect(::Any) = false
+
+# HTTP answers 500 for an escaped exception without logging it.
+function _intercept_disconnect(error)
+    if _is_disconnect(error)
+        @debug "client disconnected before the response completed, ignoring." error
+        return nothing
+    end
+    @error "server handler error" exception = (error, catch_backtrace())
+    rethrow(error)
+end
 
 function filter_changes(includes)
     return function (changes)
@@ -112,12 +136,10 @@ function Base.close(server::DevServer)
     return nothing
 end
 
-server_url(http_server) = "http://$(http_server.listener.hostname):$(http_server.listener.hostport)"
-
-logging_format() = HTTP.logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
+server_url(http_server) = "http://127.0.0.1:$(HTTP.port(http_server))"
 
 """
-    dev(; port = 8080, router_modules, middleware, watch_file_types, docs, errors, kwargs...)
+    dev(; port = 8080, router_modules, middleware, watch_file_types, docs, errors, access_log, kwargs...)
 
 Start up a development server. Code revision via `Revise` integration is
 enabled if that package is loaded. The provided router modules reflect changes
@@ -143,6 +165,10 @@ The `errors` route provides an overview of all thrown errors and their
 stacktraces. Errors can be inspected within the details view of each error.
 Source links will navigate your editor to the specific file and line of the
 stacktrace.
+
+`access_log` formats the line logged for each request, see
+[`stream_handler`](@ref). Pass `nothing` to silence the log. Remaining
+`kwargs` go to `HTTP.listen!`.
 """
 function dev(;
         port = 8080,
@@ -151,6 +177,7 @@ function dev(;
         watch_file_types = (".jl",),
         docs = "/docs/",
         errors = "/errors/",
+        access_log = access_log_line,
         kwargs...,
     )
     router = Router.router_reloader_middleware(vcat(router_modules))
@@ -164,9 +191,9 @@ function dev(;
         Docs.middleware(router_modules, docs),
         router,
     ]
-    handler = stream_handler(reduce(|>, reverse(middleware)))
+    handler = stream_handler(reduce(|>, reverse(middleware)); access_log)
 
-    http_server = HTTP.serve!(handler, port; access_log = logging_format(), kwargs..., stream = true)
+    http_server = HTTP.listen!(handler, port; kwargs...)
 
     # Once the server is running check that the route works, and then open the
     # browser at that URL.
@@ -178,17 +205,17 @@ function dev(;
 end
 
 """
-    prod(; port = 8080, router_modules = [], middleware = [], kwargs...)
+    prod(; port = 8080, router_modules = [], middleware = [], access_log, kwargs...)
 
 Start up a production server. No code revision, auto-reload, or template lookup
 is enabled for this server, unlike the `dev` server. This function blocks until
-the server is closed.
+the server is closed. `access_log` is as for [`dev`](@ref).
 """
-function prod(; port = 8080, router_modules = [], middleware = [], kwargs...)
+function prod(; port = 8080, router_modules = [], middleware = [], access_log = access_log_line, kwargs...)
     router, _, _ = Router.routes(router_modules)
     middleware = [middleware..., router]
-    handler = stream_handler(reduce(|>, reverse(middleware)))
-    return HTTP.serve(handler, port; access_log = logging_format(), kwargs..., stream = true)
+    handler = stream_handler(reduce(|>, reverse(middleware)); access_log)
+    return HTTP.listen(handler, port; kwargs...)
 end
 
 end

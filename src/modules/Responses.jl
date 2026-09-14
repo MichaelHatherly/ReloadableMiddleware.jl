@@ -33,16 +33,7 @@ function response_middleware(handler)
 end
 
 function _response_middleware(handler, request)
-    result = handler(request)
-    handle_response!(request, result)
-    return _return_response(request, result)
-end
-
-function _return_response(request, result)
-    return request.response
-end
-function _return_response(request, result::NoConvert)
-    return result
+    return handle_response(handler(request))
 end
 
 #
@@ -75,14 +66,7 @@ function response(
     charset = _charset(mime)
     content_type = "$T$charset"
 
-    body = _response_bytes(mime, object)::Vector{UInt8}
-    content_length = string(sizeof(body))
-
-    res = HTTP.Response(
-        200,
-        ["Content-Type" => content_type, "Content-Length" => content_length],
-        body,
-    )
+    res = _build_response(_response_bytes(mime, object), content_type)
 
     # When an attachment is requested, make sure that the content disposition
     # is set so that the browser will download it as a file rather than
@@ -131,49 +115,40 @@ _charset(::MIME"text/plain") = "; charset=utf-8"
 # Response handlers:
 #
 
-function handle_response!(req::HTTP.Request, res::NoConvert)
-    return res
-end
+handle_response(res::NoConvert) = res
+handle_response(res::HTTP.Response) = res
 
-function handle_response!(req::HTTP.Request, res::HTTP.Response)
-    return req.response = res
-end
-
-function handle_response!(req::HTTP.Request, content::AbstractString)
+function handle_response(content::AbstractString)
     body = string(content)
-    return _build_respose!(req.response, body, HTTP.sniff(body))
+    return _build_response(body, HTTP.sniff(body))
 end
 
-function handle_response!(req::HTTP.Request, html::Base.Docs.HTML)
+function handle_response(html::Base.Docs.HTML)
     body = sprint(show, MIME"text/html"(), html)
-    return _build_respose!(req.response, body, "text/html; charset=utf-8")
+    return _build_response(body, "text/html; charset=utf-8")
 end
 
-function handle_response!(req::HTTP.Request, text::Base.Docs.Text)
+function handle_response(text::Base.Docs.Text)
     body = sprint(show, MIME"text/plain"(), text)
-    return _build_respose!(req.response, body, "text/plain; charset=utf-8")
+    return _build_response(body, "text/plain; charset=utf-8")
 end
 
-function handle_response!(req::HTTP.Request, content::Union{Number, Bool, Char, Symbol})
-    body = string(content)
-    return _build_respose!(req.response, body, "text/plain; charset=utf-8")
+function handle_response(content::Union{Number, Bool, Char, Symbol})
+    return _build_response(string(content), "text/plain; charset=utf-8")
 end
 
-function handle_response!(req::HTTP.Request, content::Any)
+function handle_response(content::Any)
     body = JSON.json(content; allownan = true)
-    return _build_respose!(req.response, body, "application/json; charset=utf-8")
+    return _build_response(body, "application/json; charset=utf-8")
 end
 
-function _build_respose!(response, body, content_type)
-    bytes = Vector{UInt8}(body)
-
-    HTTP.setheader(response, "Content-Type" => content_type)
-    HTTP.setheader(response, "Content-Length" => string(sizeof(bytes)))
-
-    response.status = 200
-    response.body = bytes::Vector{UInt8}
-
-    return response
+_build_response(body::AbstractString, content_type) = _build_response(Vector{UInt8}(body), content_type)
+function _build_response(bytes::Vector{UInt8}, content_type)
+    return HTTP.Response(
+        200,
+        ["Content-Type" => content_type, "Content-Length" => string(sizeof(bytes))],
+        bytes,
+    )
 end
 
 #

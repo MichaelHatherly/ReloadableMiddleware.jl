@@ -6,8 +6,8 @@ using Test
     include("testsets/Context.jl")
     include("testsets/Docs.jl")
     include("testsets/Errors.jl")
+    include("testsets/Reloader.jl")
     include("testsets/Responses.jl")
     include("testsets/Router.jl")
     include("testsets/Server.jl")
-    include("testsets/Extensions.jl")
 end

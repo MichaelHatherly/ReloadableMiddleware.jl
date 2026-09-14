@@ -2,6 +2,8 @@ using ReloadableMiddleware
 using Revise
 using Test
 
+import ReloadableMiddleware.Server
+
 import HTTP
 import Sockets
 
@@ -58,13 +60,6 @@ end
         )
     end
 
-    function free_port()
-        srv = Sockets.listen(Sockets.localhost, 0)
-        port = Int(Sockets.getsockname(srv)[2])
-        close(srv)
-        return port
-    end
-
     function assert_single_responses(received, n)
         data = wire_bytes(received)
         @test count("HTTP/1.1", data) == n
@@ -79,17 +74,11 @@ end
             HTTP.setheader(stream, "Content-Type" => "text/event-stream")
             HTTP.startwrite(stream)
             write(stream, "data: hello\n\n")
-            return request.response
+            return HTTP.Response(200)
         end
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(handler),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
+        server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+        port = HTTP.port(server)
         sock = Sockets.connect("127.0.0.1", port)
         try
             received = wire_reader(sock)
@@ -109,41 +98,111 @@ end
         end
     end
 
+    # Runs `f(server, logger)` with the server's logs captured. The server
+    # starts under the test logger so its connection tasks inherit it.
+    function with_access_log(f, handler)
+        logger = Test.TestLogger()
+        result = Base.with_logger(logger) do
+            server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+            try
+                f(server, logger)
+            finally
+                close(server)
+            end
+        end
+        return result, logger
+    end
+
+    access_lines(logger) = [log.message for log in logger.logs if log.group == :access]
+
+    # The exception an escaped handler error was logged with, for failure output.
+    function logged_errors(logger)
+        return [
+            repr(log.kwargs[:exception][1]) for
+                log in logger.logs if log.level == Test.Logging.Error
+        ]
+    end
+
+    access_line(target, status) =
+        Regex("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2} - 127\\.0\\.0\\.1:\\d+ - \"GET $target HTTP/1\\.1\" $status\$")
+
     @testset "handler that returns a plain response" begin
+        seen_ip = Ref{Any}(nothing)
         handler = function (request)
-            request.response.status = 200
-            request.response.body = "plain"
-            return request.response
+            seen_ip[] = request.context[:ip]
+            return HTTP.Response(200, "plain")
         end
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(handler),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
-        try
-            response = HTTP.get("http://127.0.0.1:$(port)/")
-            @test response.status == 200
-            @test String(response.body) == "plain"
-        finally
-            close(server)
+        response, logger = with_access_log(handler) do server, _
+            HTTP.get("$(Server.server_url(server))/path")
         end
+        @test response.status == 200
+        @test String(response.body) == "plain"
+        @test seen_ip[] == Sockets.ip"127.0.0.1"
+        @test any(line -> occursin(access_line("/path", 200), line), access_lines(logger))
+    end
+
+    @testset "access log can be silenced" begin
+        handler = request -> HTTP.Response(200, "quiet")
+        logger = Test.TestLogger()
+        response = Base.with_logger(logger) do
+            server = HTTP.listen!(Server.stream_handler(handler; access_log = nothing), 0; listenany = true)
+            try
+                HTTP.get("$(Server.server_url(server))/path")
+            finally
+                close(server)
+            end
+        end
+        @test response.status == 200
+        @test isempty(logger.logs)
+    end
+
+    @testset "handler that throws logs a 500" begin
+        handler = request -> throw(ErrorException("boom"))
+
+        response, logger = with_access_log(handler) do server, _
+            HTTP.get("$(Server.server_url(server))/path"; status_exception = false, retry = false)
+        end
+        @test response.status == 500
+        @test any(line -> occursin(access_line("/path", 500), line), access_lines(logger))
+        @test only(logged_errors(logger)) == "ErrorException(\"boom\")"
+    end
+
+    @testset "client that disconnects mid-write logs the response status" begin
+        handler = function (request)
+            sleep(0.5)
+            return HTTP.Response(200, "x"^(64 * 1024 * 1024))
+        end
+
+        _, logger = with_access_log(handler) do server, logger
+            port = HTTP.port(server)
+            sock = Sockets.connect("127.0.0.1", port)
+            raw_get(sock, port, "/path")
+            close(sock)
+            timedwait(30.0; pollint = 0.1) do
+                any(log -> log.group == :access, logger.logs)
+            end
+        end
+        @test logged_errors(logger) == []
+        @test any(line -> occursin(access_line("/path", 200), line), access_lines(logger))
+    end
+
+    @testset "handlers run in the latest world" begin
+        Core.eval(@__MODULE__, :(world_probe() = "before"))
+        handler = request -> HTTP.Response(200, world_probe())
+
+        response, _ = with_access_log(ReloadableMiddleware.Reviser.ReviseMiddleware(handler)) do server, _
+            Core.eval(@__MODULE__, :(world_probe() = "after"))
+            HTTP.get("$(Server.server_url(server))/path")
+        end
+        @test String(response.body) == "after"
     end
 
     @testset "STREAM route" begin
         router, _, _ = ReloadableMiddleware.Router.routes([ServerStreamRoutes])
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(router),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
+        server = HTTP.listen!(Server.stream_handler(router), 0; listenany = true)
+        port = HTTP.port(server)
         sock = Sockets.connect("127.0.0.1", port)
         try
             received = wire_reader(sock)
@@ -161,24 +220,18 @@ end
     @testset "reloader stream" begin
         handler = function (request)
             stream = request.context[:stream]::HTTP.Stream
-            # `wait`/`notify` on `Base.Condition` must happen on one thread;
-            # `@async` keeps the notifier on the handler's thread.
-            condition = Base.Condition()
+            condition = Threads.Condition()
             @async begin
                 sleep(0.2)
-                notify(condition)
+                lock(condition) do
+                    notify(condition)
+                end
             end
             return ReloadableMiddleware.Reloader.reload(stream, condition)
         end
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(handler),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
+        server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+        port = HTTP.port(server)
         sock = Sockets.connect("127.0.0.1", port)
         try
             received = wire_reader(sock)
