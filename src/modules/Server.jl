@@ -90,13 +90,24 @@ end
 
 # A client that disconnects while its response is still being written
 # surfaces as a broken pipe or a reset on the write. Nobody is left to tell.
+# On Windows the errnum is the Winsock code: WSAECONNABORTED, WSAECONNRESET,
+# WSAESHUTDOWN.
+const DISCONNECT_ERRNOS = Sys.iswindows() ?
+    (Libc.EPIPE, Libc.ECONNRESET, 10053, 10054, 10058) :
+    (Libc.EPIPE, Libc.ECONNRESET)
+
 function _intercept_disconnect(error::SystemError)
-    if error.prefix == "write" && error.errnum in (Libc.EPIPE, Libc.ECONNRESET)
+    if error.prefix == "write" && error.errnum in DISCONNECT_ERRNOS
         @debug "client disconnected before the response completed, ignoring." error
         return nothing
     else
         rethrow(error)
     end
+end
+# Reseau reports a zero-byte write as EOF.
+function _intercept_disconnect(error::EOFError)
+    @debug "client disconnected before the response completed, ignoring." error
+    return nothing
 end
 _intercept_disconnect(error) = rethrow(error)
 
