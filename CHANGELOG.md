@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [v4.0.0] - 2026-09-14
+
 ### Changed
 
 - Require `HTTP` 2 and `Bonito` 5. Servers start with `HTTP.listen!`, the access log moves into `Server.stream_handler`, and route handlers return `HTTP.Response` objects directly [#50]
@@ -150,6 +152,7 @@ Initial release.
 [v2.5.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v2.5.0
 [v3.0.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v3.0.0
 [v3.0.1]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v3.0.1
+[v4.0.0]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/releases/tag/v4.0.0
 [#5]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/5
 [#6]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/6
 [#7]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/7
