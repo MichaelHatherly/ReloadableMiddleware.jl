@@ -118,7 +118,7 @@ end
     # The exception an escaped handler error was logged with, for failure output.
     function logged_errors(logger)
         return [
-            sprint(showerror, log.kwargs[:exception]...) for
+            repr(log.kwargs[:exception][1]) for
                 log in logger.logs if log.level == Test.Logging.Error
         ]
     end
@@ -165,7 +165,7 @@ end
         end
         @test response.status == 500
         @test any(line -> occursin(access_line("/path", 500), line), access_lines(logger))
-        @test startswith(only(logged_errors(logger)), "boom")
+        @test only(logged_errors(logger)) == "ErrorException(\"boom\")"
     end
 
     @testset "client that disconnects mid-write logs the response status" begin

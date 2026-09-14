@@ -89,14 +89,9 @@ function access_log_line(stream, peer, status)
 end
 
 # A client that disconnects while its response is still being written
-# surfaces as a broken pipe or a reset on the write. Nobody is left to tell.
-# On Windows the errnum is the Winsock code: WSAECONNABORTED, WSAECONNRESET,
-# WSAESHUTDOWN.
-const DISCONNECT_ERRNOS = Sys.iswindows() ?
-    (Libc.EPIPE, Libc.ECONNRESET, 10053, 10054, 10058) :
-    (Libc.EPIPE, Libc.ECONNRESET)
-
-_is_disconnect(error::SystemError) = error.prefix == "write" && error.errnum in DISCONNECT_ERRNOS
+# surfaces as a failed write: EPIPE or ECONNRESET on POSIX, a Winsock code
+# on Windows. Whatever the code, nobody is left to tell.
+_is_disconnect(error::SystemError) = error.prefix == "write"
 # Reseau reports a zero-byte write as EOF.
 _is_disconnect(::EOFError) = true
 _is_disconnect(::Any) = false
