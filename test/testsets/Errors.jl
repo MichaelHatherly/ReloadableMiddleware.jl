@@ -44,4 +44,18 @@ import HTTP
         @test Errors.find_source(real_path) == real_path
         @test Errors.resolve_source_file(real_path) == real_path
     end
+
+    @testset "handler error is recorded" begin
+        storage = []
+        failing = Errors.error_reporting_middleware("/errors/"; errors_storage = storage)
+        boom = failing(req -> throw(ErrorException("boom")))
+        req = HTTP.Request("GET", "/boom"; headers = ["Host" => "127.0.0.1:8080"])
+        res = withenv("CI" => "true") do
+            @test_logs (:info, r"CI system detected") boom(req)
+        end
+        @test res.status == 500
+        @test length(storage) == 1
+        _, message, _ = storage[1]
+        @test contains(message, "boom")
+    end
 end

@@ -205,7 +205,7 @@ struct StackFrameWrapper
 end
 
 function _process_stacktrace(error, bt)
-    clean = Base.process_backtrace(bt)
+    clean = Base.process_backtrace(stacktrace(bt))
     wrapped = StackFrameWrapper.(clean)
     toplevel = findfirst(s -> StackTraces.is_top_level_frame(s.sf), wrapped)
     toplevel = toplevel === nothing ? length(wrapped) : toplevel

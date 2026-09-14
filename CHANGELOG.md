@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Wait for reload events on a `Threads.Condition`. The reload stream now works when the server handler runs off the main thread [#50]
+- Record handler errors on Julia 1.13, where `Base.process_backtrace` no longer accepts a raw backtrace [#50]
 
 ## [v3.0.1] - 2026-06-04
 
