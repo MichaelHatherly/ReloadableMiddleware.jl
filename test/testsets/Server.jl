@@ -98,8 +98,8 @@ end
         end
     end
 
-    # Runs `f(server, logger)` with the access log captured. The server starts
-    # under the test logger so its connection tasks inherit it.
+    # Runs `f(server, logger)` with the server's logs captured. The server
+    # starts under the test logger so its connection tasks inherit it.
     function with_access_log(f, handler)
         logger = Test.TestLogger()
         result = Base.with_logger(logger) do
@@ -110,8 +110,17 @@ end
                 close(server)
             end
         end
-        access = [log.message for log in logger.logs if log.group == :access]
-        return result, access
+        return result, logger
+    end
+
+    access_lines(logger) = [log.message for log in logger.logs if log.group == :access]
+
+    # The exception an escaped handler error was logged with, for failure output.
+    function logged_errors(logger)
+        return [
+            sprint(showerror, log.kwargs[:exception]...) for
+                log in logger.logs if log.level == Test.Logging.Error
+        ]
     end
 
     access_line(target, status) =
@@ -124,13 +133,13 @@ end
             return HTTP.Response(200, "plain")
         end
 
-        response, access = with_access_log(handler) do server, _
+        response, logger = with_access_log(handler) do server, _
             HTTP.get("$(Server.server_url(server))/path")
         end
         @test response.status == 200
         @test String(response.body) == "plain"
         @test seen_ip[] == Sockets.ip"127.0.0.1"
-        @test any(line -> occursin(access_line("/path", 200), line), access)
+        @test any(line -> occursin(access_line("/path", 200), line), access_lines(logger))
     end
 
     @testset "access log can be silenced" begin
@@ -151,11 +160,12 @@ end
     @testset "handler that throws logs a 500" begin
         handler = request -> throw(ErrorException("boom"))
 
-        response, access = with_access_log(handler) do server, _
-            HTTP.get("$(Server.server_url(server))/path"; status_exception = false)
+        response, logger = with_access_log(handler) do server, _
+            HTTP.get("$(Server.server_url(server))/path"; status_exception = false, retry = false)
         end
         @test response.status == 500
-        @test any(line -> occursin(access_line("/path", 500), line), access)
+        @test any(line -> occursin(access_line("/path", 500), line), access_lines(logger))
+        @test startswith(only(logged_errors(logger)), "boom")
     end
 
     @testset "client that disconnects mid-write logs the response status" begin
@@ -164,7 +174,7 @@ end
             return HTTP.Response(200, "x"^(64 * 1024 * 1024))
         end
 
-        _, access = with_access_log(handler) do server, logger
+        _, logger = with_access_log(handler) do server, logger
             port = HTTP.port(server)
             sock = Sockets.connect("127.0.0.1", port)
             raw_get(sock, port, "/path")
@@ -173,7 +183,8 @@ end
                 any(log -> log.group == :access, logger.logs)
             end
         end
-        @test any(line -> occursin(access_line("/path", 200), line), access)
+        @test logged_errors(logger) == []
+        @test any(line -> occursin(access_line("/path", 200), line), access_lines(logger))
     end
 
     @testset "handlers run in the latest world" begin

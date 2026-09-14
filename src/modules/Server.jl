@@ -96,20 +96,20 @@ const DISCONNECT_ERRNOS = Sys.iswindows() ?
     (Libc.EPIPE, Libc.ECONNRESET, 10053, 10054, 10058) :
     (Libc.EPIPE, Libc.ECONNRESET)
 
-function _intercept_disconnect(error::SystemError)
-    if error.prefix == "write" && error.errnum in DISCONNECT_ERRNOS
+_is_disconnect(error::SystemError) = error.prefix == "write" && error.errnum in DISCONNECT_ERRNOS
+# Reseau reports a zero-byte write as EOF.
+_is_disconnect(::EOFError) = true
+_is_disconnect(::Any) = false
+
+# HTTP answers 500 for an escaped exception without logging it.
+function _intercept_disconnect(error)
+    if _is_disconnect(error)
         @debug "client disconnected before the response completed, ignoring." error
         return nothing
-    else
-        rethrow(error)
     end
+    @error "server handler error" exception = (error, catch_backtrace())
+    rethrow(error)
 end
-# Reseau reports a zero-byte write as EOF.
-function _intercept_disconnect(error::EOFError)
-    @debug "client disconnected before the response completed, ignoring." error
-    return nothing
-end
-_intercept_disconnect(error) = rethrow(error)
 
 function filter_changes(includes)
     return function (changes)
