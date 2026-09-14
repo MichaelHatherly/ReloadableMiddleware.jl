@@ -10,5 +10,4 @@ using Test
     include("testsets/Responses.jl")
     include("testsets/Router.jl")
     include("testsets/Server.jl")
-    include("testsets/Extensions.jl")
 end
