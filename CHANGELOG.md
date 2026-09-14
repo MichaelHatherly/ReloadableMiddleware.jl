@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Require `HTTP` 2 and `Bonito` 5. Servers start with `HTTP.listen!`, the access log moves into `Server.stream_handler`, and route handlers return `HTTP.Response` objects directly [#50]
+
+### Fixed
+
+- Wait for reload events on a `Threads.Condition`. The reload stream now works when the server handler runs off the main thread [#50]
+
 ## [v3.0.1] - 2026-06-04
 
 ### Fixed
@@ -158,4 +166,5 @@ Initial release.
 [#43]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/43
 [#44]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/44
 [#49]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/49
+[#50]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/50
 [#51]: https://github.com/MichaelHatherly/ReloadableMiddleware.jl/issues/51

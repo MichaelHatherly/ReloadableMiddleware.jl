@@ -11,7 +11,6 @@ import ..Router
 
 import Dates
 import HTTP
-import Sockets
 import URIs
 
 #
@@ -270,16 +269,11 @@ function _error_response(request, error, st, target, storage)
     push!(storage, (timestamp, message, stack))
     id = length(storage)
 
-    stream = request.context[:stream]
-    ip, port = Sockets.getsockname(stream)
-    address = "http://$(ip):$(Int(port))$(target)$(id)"
+    host = HTTP.header(request, "Host")
+    address = "http://$(host)$(target)$(id)"
     Browser.browser(address)
 
-    request.response.status = HTTP.StatusCodes.INTERNAL_SERVER_ERROR
-    request.response.body = ""
-    HTTP.setheader(request.response, "Content-Length" => "0")
-
-    return request.response
+    return HTTP.Response(500)
 end
 
 is_htmx(req::HTTP.Request) = HTTP.headercontains(req, "HX-Request", "true")

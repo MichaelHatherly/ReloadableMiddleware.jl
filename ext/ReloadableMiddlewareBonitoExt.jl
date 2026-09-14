@@ -289,7 +289,7 @@ function ReloadableMiddleware.Extensions._bonito_middleware(::Nothing, prefix::S
 end
 
 _is_bonito(req::HTTP.Request, prefix::String) = startswith(req.target, prefix)
-_is_bonito(stream::HTTP.Stream, prefix::String) = _is_bonito(stream.request, prefix)
+_is_bonito(stream::HTTP.Stream, prefix::String) = _is_bonito(stream.message, prefix)
 
 function _handle_bonito_request(request::HTTP.Request, context::BonitoContext)
     target = request.target
@@ -302,7 +302,7 @@ function _handle_bonito_request(request::HTTP.Request, context::BonitoContext)
                 _bonito_websocket_handler(ws, session_id, context)
             end
         end
-        return request.response
+        return HTTP.Response(200)
     elseif startswith(target, context.assets.endpoint) && request.method == "GET"
         return _bonito_assets_handler(request, context)
     else

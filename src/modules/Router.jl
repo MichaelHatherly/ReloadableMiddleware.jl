@@ -658,7 +658,7 @@ function _body_parser(req, ::Type{JSON{type}}) where {type}
     HTTP.headercontains(req, "Content-Type", "application/json") ||
         error("`JSON` body expected, but `Content-Type` is not `application/json`.")
     # TODO: maybe don't set `allownan`, allow it to be customizable.
-    return JSON{type}(JSONLib.parse(req.body, type; allownan = true))
+    return JSON{type}(JSONLib.parse(String(req.body), type; allownan = true))
 end
 
 # Multipart form data:
@@ -802,10 +802,11 @@ function _stream_handler(request::HTTP.Request, user_handler, request_parser)
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET")
     HTTP.setheader(stream, "Cache-Control" => "no-cache")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
-    # Leave the write side open; the server finalizes the stream after the
-    # handler returns. Closing it here causes a second response to be written.
     nt = request_parser(request)
-    return _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
+    _invoke_kw(user_handler, stream, nt.path, nt.query, nt.body)
+    # Leave the write side open, and return no body: the server finalizes the
+    # stream after the handler returns, and appends any body to the event stream.
+    return HTTP.Response(200)
 end
 
 # Websocket handler:
@@ -825,7 +826,7 @@ function _websocket_handler(request::HTTP.Request, user_handler, request_parser)
             _invoke_kw(user_handler, ws::WS.WebSocket, nt.path, nt.query, nt.body)
         end
     end
-    return nothing
+    return HTTP.Response(200)
 end
 
 """

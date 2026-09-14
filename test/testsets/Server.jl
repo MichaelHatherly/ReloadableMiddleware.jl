@@ -2,6 +2,8 @@ using ReloadableMiddleware
 using Revise
 using Test
 
+import ReloadableMiddleware.Server
+
 import HTTP
 import Sockets
 
@@ -58,13 +60,6 @@ end
         )
     end
 
-    function free_port()
-        srv = Sockets.listen(Sockets.localhost, 0)
-        port = Int(Sockets.getsockname(srv)[2])
-        close(srv)
-        return port
-    end
-
     function assert_single_responses(received, n)
         data = wire_bytes(received)
         @test count("HTTP/1.1", data) == n
@@ -79,17 +74,11 @@ end
             HTTP.setheader(stream, "Content-Type" => "text/event-stream")
             HTTP.startwrite(stream)
             write(stream, "data: hello\n\n")
-            return request.response
+            return HTTP.Response(200)
         end
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(handler),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
+        server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+        port = HTTP.port(server)
         sock = Sockets.connect("127.0.0.1", port)
         try
             received = wire_reader(sock)
@@ -110,40 +99,33 @@ end
     end
 
     @testset "handler that returns a plain response" begin
+        seen_ip = Ref{Any}(nothing)
         handler = function (request)
-            request.response.status = 200
-            request.response.body = "plain"
-            return request.response
+            seen_ip[] = request.context[:ip]
+            return HTTP.Response(200, "plain")
         end
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(handler),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
-        try
-            response = HTTP.get("http://127.0.0.1:$(port)/")
-            @test response.status == 200
-            @test String(response.body) == "plain"
-        finally
-            close(server)
+        logger = Test.TestLogger()
+        response = Base.with_logger(logger) do
+            server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+            try
+                HTTP.get("$(Server.server_url(server))/path")
+            finally
+                close(server)
+            end
         end
+        @test response.status == 200
+        @test String(response.body) == "plain"
+        @test seen_ip[] == Sockets.ip"127.0.0.1"
+        access_line = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} - 127\.0\.0\.1:\d+ - \"GET /path HTTP/1\.1\" 200$"
+        @test any(log -> log.group == :access && occursin(access_line, log.message), logger.logs)
     end
 
     @testset "STREAM route" begin
         router, _, _ = ReloadableMiddleware.Router.routes([ServerStreamRoutes])
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(router),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
+        server = HTTP.listen!(Server.stream_handler(router), 0; listenany = true)
+        port = HTTP.port(server)
         sock = Sockets.connect("127.0.0.1", port)
         try
             received = wire_reader(sock)
@@ -161,24 +143,18 @@ end
     @testset "reloader stream" begin
         handler = function (request)
             stream = request.context[:stream]::HTTP.Stream
-            # `wait`/`notify` on `Base.Condition` must happen on one thread;
-            # `@async` keeps the notifier on the handler's thread.
-            condition = Base.Condition()
+            condition = Threads.Condition()
             @async begin
                 sleep(0.2)
-                notify(condition)
+                lock(condition) do
+                    notify(condition)
+                end
             end
             return ReloadableMiddleware.Reloader.reload(stream, condition)
         end
 
-        port = free_port()
-        server = HTTP.serve!(
-            ReloadableMiddleware.Server.stream_handler(handler),
-            "127.0.0.1",
-            port;
-            stream = true,
-            verbose = -1,
-        )
+        server = HTTP.listen!(Server.stream_handler(handler), 0; listenany = true)
+        port = HTTP.port(server)
         sock = Sockets.connect("127.0.0.1", port)
         try
             received = wire_reader(sock)

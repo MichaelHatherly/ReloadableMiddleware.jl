@@ -213,7 +213,7 @@ end
                 "/multipart",
                 [
                     "Content-Type" => "multipart/form-data; boundary=$boundary",
-                    "Content-Length" => length(body),
+                    "Content-Length" => string(length(body)),
                 ],
                 body,
             ),
@@ -236,7 +236,7 @@ end
                 "/multipart-typed",
                 [
                     "Content-Type" => "multipart/form-data; boundary=$boundary",
-                    "Content-Length" => length(body),
+                    "Content-Length" => string(length(body)),
                 ],
                 body,
             ),
@@ -259,7 +259,7 @@ end
                 "/multipart-typed",
                 [
                     "Content-Type" => "multipart/form-data; boundary=$boundary",
-                    "Content-Length" => length(body),
+                    "Content-Length" => string(length(body)),
                 ],
                 body,
             ),

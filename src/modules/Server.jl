@@ -13,6 +13,7 @@ import ..Browser
 import ..Errors
 import ..Docs
 
+import Dates
 import HTTP
 import HypertextTemplates
 import Sockets
@@ -41,32 +42,32 @@ end
 
 function stream_handler(middleware)
     return function (stream)
-        ip, _ = Sockets.getpeername(stream)
-        handler = middleware |> decorate_request(; ip, stream)
+        peer = HTTP.peeraddr(stream)
+        ip = peer_ip(peer)
+        handle_stream = HTTP.streamhandler(middleware |> decorate_request(; ip, stream))
         try
-            return handle_stream(handler, stream)
+            return handle_stream(stream)
         catch error
             return _intercept_epipe_error(error)
+        finally
+            access_log(stream, peer)
         end
     end
 end
 
-# Request handlers receive stream access via `request.context` and may write
-# the response themselves (server-sent events). When that happens the write
-# side is already started and the server finalizes the message after the
-# handler returns; writing `request.response` as well would emit a second
-# response on the connection, desynchronizing every later response on it.
-# Otherwise equivalent to `HTTP.streamhandler`.
-function handle_stream(handler, stream::HTTP.Stream)
+peer_ip(::Nothing) = nothing
+function peer_ip(peer)
+    octets = peer.ip
+    length(octets) == 4 && return Sockets.IPv4(octets...)
+    return Sockets.IPv6(foldl((n, b) -> n << 8 | b, octets; init = UInt128(0)))
+end
+
+function access_log(stream, peer)
     request = stream.message
-    request.body = read(stream)
-    HTTP.closeread(stream)
-    request.response = handler(request)
-    request.response.request = request
-    if !HTTP.iswritable(stream)
-        HTTP.startwrite(stream)
-        write(stream, request.response.body)
-    end
+    status = stream.response.status
+    time = Dates.format(Dates.now(), Dates.dateformat"yyyy-mm-dd\THH:MM:SS")
+    protocol = "HTTP/$(request.proto_major).$(request.proto_minor)"
+    @info "$time - $peer - \"$(request.method) $(request.target) $protocol\" $status" _group = :access
     return nothing
 end
 
@@ -112,9 +113,7 @@ function Base.close(server::DevServer)
     return nothing
 end
 
-server_url(http_server) = "http://$(http_server.listener.hostname):$(http_server.listener.hostport)"
-
-logging_format() = HTTP.logfmt"$time_iso8601 - $remote_addr:$remote_port - \"$request\" $status"
+server_url(http_server) = "http://127.0.0.1:$(HTTP.port(http_server))"
 
 """
     dev(; port = 8080, router_modules, middleware, watch_file_types, docs, errors, kwargs...)
@@ -166,7 +165,7 @@ function dev(;
     ]
     handler = stream_handler(reduce(|>, reverse(middleware)))
 
-    http_server = HTTP.serve!(handler, port; access_log = logging_format(), kwargs..., stream = true)
+    http_server = HTTP.listen!(handler, port; kwargs...)
 
     # Once the server is running check that the route works, and then open the
     # browser at that URL.
@@ -188,7 +187,7 @@ function prod(; port = 8080, router_modules = [], middleware = [], kwargs...)
     router, _, _ = Router.routes(router_modules)
     middleware = [middleware..., router]
     handler = stream_handler(reduce(|>, reverse(middleware)))
-    return HTTP.serve(handler, port; access_log = logging_format(), kwargs..., stream = true)
+    return HTTP.listen(handler, port; kwargs...)
 end
 
 end

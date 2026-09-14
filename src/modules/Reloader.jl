@@ -15,13 +15,15 @@ the DOM morphing provided by https://github.com/bigskysoftware/idiomorph.
 Add this middleware directly *after* `ReviseMiddleware`.
 """
 function ReloaderMiddleware(user_callback = identity; config...)
-    condition = Condition()
+    condition = Threads.Condition()
     function callback(changes)
         changes = Base.@invokelatest user_callback(changes)
         return if isempty(changes)
             # Filtered changes contains no changes.
         else
-            notify(condition)
+            lock(condition) do
+                notify(condition)
+            end
         end
     end
     watcher = Watcher.FolderWatcher(callback; config...)
@@ -55,17 +57,19 @@ function reloader_middleware(handler, req, address, condition)
     return append_reloader_script(handler(req), address)
 end
 
-function reload(stream::HTTP.Stream, condition::Condition)
+function reload(stream::HTTP.Stream, condition::Threads.Condition)
     HTTP.setheader(stream, "Access-Control-Allow-Methods" => "GET, OPTIONS")
     HTTP.setheader(stream, "Content-Type" => "text/event-stream")
 
-    if HTTP.method(stream.message) == "OPTIONS"
-        return HTTP.Response(200, "")
+    if stream.message.method == "OPTIONS"
+        return HTTP.Response(200)
     else
         HTTP.setheader(stream, "Content-Type" => "text/event-stream")
         HTTP.setheader(stream, "Cache-Control" => "no-cache")
 
-        wait(condition)
+        lock(condition) do
+            wait(condition)
+        end
         if isopen(stream)
             HTTP.startwrite(stream)
             @debug "🔄 sending reload event"
@@ -76,11 +80,11 @@ function reload(stream::HTTP.Stream, condition::Condition)
                 # manually. In that case, we just ignore the error.
                 @debug "failed to send reload event" error
             end
-            # Leave the write side open; the server finalizes the stream after
-            # the handler returns.
-            return HTTP.Response(200, "Stream complete.")
+            # Leave the write side open, and return no body: the server
+            # finalizes the stream after the handler returns.
+            return HTTP.Response(200)
         else
-            return HTTP.Response(500, "Stream is no longer open.")
+            return HTTP.Response(500)
         end
     end
 end
@@ -115,8 +119,9 @@ function append_reloader_script(response::HTTP.Response, address::String)
         </script>
         $tags
         """
-        response.body = codeunits(replace(String(response.body), tags => script))
-        HTTP.setheader(response, "Content-Length" => string(sizeof(response.body)))
+        body = Vector{UInt8}(replace(String(response.body), tags => script))
+        HTTP.setheader(response, "Content-Length" => string(sizeof(body)))
+        return HTTP.Response(response.status, response.headers, body)
     end
     return response
 end
